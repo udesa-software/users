@@ -1,0 +1,87 @@
+const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
+const { userRepository } = require('./user.repository');
+const { sendVerificationEmail } = require('../../config/mailer');
+const { AppError } = require('../../middlewares/errorHandler');
+
+const TOKEN_EXPIRY_HOURS = 24;
+
+function tokenExpiresAt() {
+  const date = new Date();
+  date.setHours(date.getHours() + TOKEN_EXPIRY_HOURS);
+  return date;
+}
+
+const userService = {
+  async register(input) {
+    // CA.7: normalize email to lowercase before any lookup
+    const email = input.email.toLowerCase();
+
+    // CA.2: no duplicate emails (case-insensitive)
+    const existingEmail = await userRepository.findByEmail(email);
+    if (existingEmail) {
+      throw new AppError(409, 'El email ya está registrado');
+    }
+
+    // CA.3: no duplicate usernames
+    const existingUsername = await userRepository.findByUsername(input.username);
+    if (existingUsername) {
+      throw new AppError(409, 'El nombre de usuario ya está en uso');
+    }
+
+    // CA.4: hash password
+    const passwordHash = await bcrypt.hash(input.password, 12);
+
+    // CA.6: generate token with expiry
+    const verifyToken = uuidv4();
+    const expiresAt = tokenExpiresAt();
+
+    const user = await userRepository.create({
+      username: input.username,
+      email,
+      passwordHash,
+      verifyToken,
+      tokenExpiresAt: expiresAt,
+    });
+
+    // Send email fire-and-forget (don't block registration on mail failure)
+    sendVerificationEmail(email, verifyToken).catch((err) =>
+      console.error('Failed to send verification email:', err)
+    );
+
+    return user;
+  },
+
+  async verifyEmail(token) {
+    // CA.6: token must exist and not be expired
+    const user = await userRepository.findByVerifyToken(token);
+    if (!user) {
+      throw new AppError(400, 'El token es inválido o ha expirado');
+    }
+
+    await userRepository.markVerified(user.id);
+  },
+
+  async resendVerification(email) {
+    const user = await userRepository.findByEmail(email.toLowerCase());
+    if (!user) {
+      throw new AppError(404, 'No existe una cuenta con ese email');
+    }
+
+    if (user.is_verified) {
+      throw new AppError(400, 'La cuenta ya fue verificada');
+    }
+
+    // CA.6: fresh token with new 24h window
+    const newToken = uuidv4();
+    const newExpiresAt = tokenExpiresAt();
+
+    await userRepository.updateVerifyToken(user.id, newToken, newExpiresAt);
+
+    sendVerificationEmail(email.toLowerCase(), newToken).catch((err) =>
+      console.error('Failed to resend verification email:', err)
+    );
+  },
+};
+
+module.exports = { userService };
