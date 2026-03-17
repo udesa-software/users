@@ -7,7 +7,11 @@ CREATE TABLE IF NOT EXISTS users (
   verify_token     UUID,
   token_expires_at TIMESTAMPTZ,
   created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  failed_login_attempts INT         NOT NULL DEFAULT 0,
+  locked_until          TIMESTAMPTZ,
+  is_suspended          BOOLEAN     NOT NULL DEFAULT FALSE,
+  deleted_at            TIMESTAMPTZ
 );
 
 -- Unique username (case-sensitive as per CA.3)
@@ -15,3 +19,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS users_username_idx ON users (username);
 
 -- Case-insensitive unique email (CA.7)
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_idx ON users (LOWER(email));
+
+

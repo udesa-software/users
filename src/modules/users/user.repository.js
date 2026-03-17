@@ -53,6 +53,31 @@ const userRepository = {
       [userId]
     );
   },
+
+  // CA.2: incrementa el contador de intentos fallidos y bloquea si llega a 5
+  async incrementFailedAttempts(userId) {
+    await query(
+      `UPDATE users
+       SET failed_login_attempts = failed_login_attempts + 1,
+           locked_until = CASE
+             WHEN failed_login_attempts + 1 >= 5 THEN NOW() + INTERVAL '15 minutes'
+             ELSE locked_until
+           END,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [userId]
+    );
+  },
+
+  // CA.2: resetea el contador al iniciar sesión correctamente
+  async resetFailedAttempts(userId) {
+    await query(
+      `UPDATE users
+       SET failed_login_attempts = 0, locked_until = NULL, updated_at = NOW()
+       WHERE id = $1`,
+      [userId]
+    );
+  },
 };
 
 module.exports = { userRepository };
