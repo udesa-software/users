@@ -20,7 +20,8 @@ const authService = {
 
     // CA.2: cuenta bloqueada por demasiados intentos fallidos
     if (user.locked_until && new Date(user.locked_until) > new Date()) {
-      throw new AppError(423, 'Cuenta bloqueada temporalmente. Intentá de nuevo en 15 minutos.');
+      //throw new AppError(423, `Cuenta bloqueada temporalmente. Intentá de nuevo en ${Math.ceil(((user.locked_until - new Date()) / 60000))} minutos.`); 
+      throw new AppError(423, `Cuenta bloqueada temporalmente. Intentá de nuevo en ${Math.ceil((user.locked_until - new Date()) / 60000)} minutos.`); 
     }
 
     // CA.4: email no verificado
