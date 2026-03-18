@@ -23,6 +23,10 @@ const authService = {
       throw new AppError(401, 'Email o contraseña incorrectos');
     }
 
+    if(user.is_deleted){
+      throw new AppError(401, 'Tu cuenta fue eliminada');
+    }
+
     const token = jwt.sign(
       { sub: user.id, username: user.username, email: user.email },
       env.JWT_SECRET,

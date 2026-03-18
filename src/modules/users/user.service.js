@@ -82,6 +82,22 @@ const userService = {
       console.error('Failed to resend verification email:', err)
     );
   },
+
+  async delete(input) {
+
+    const existingUsername = await userRepository.findByUsername(input.username);
+    if (!existingUsername) {
+      throw new AppError(401, 'Email o contraseña incorrectos');
+    }
+
+    const passwordMatch = await bcrypt.compare(input.password, existingUsername.password_hash);
+    if (!passwordMatch) {
+      throw new AppError(401, 'Email o contraseña incorrectos');
+    }
+
+    const user = await userRepository.markDeleted(input.username);
+  },
+
 };
 
 module.exports = { userService };

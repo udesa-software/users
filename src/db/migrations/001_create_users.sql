@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS users (
   verify_token     UUID,
   token_expires_at TIMESTAMPTZ,
   created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  is_deleted       BOOLEAN      NOT NULL DEFAULT FALSE
 );
 
 -- Unique username (case-sensitive as per CA.3)

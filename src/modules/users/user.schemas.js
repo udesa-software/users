@@ -28,4 +28,16 @@ const resendVerificationSchema = z.object({
     .email('El formato del email no es válido'),
 });
 
+const deleteSchema = z.object({
+  username: z
+    .string({ required_error: 'El nombre de usuario es obligatorio' })
+    .min(4, 'Usuario o contraseña incorrectos')
+    .max(15, 'Usuario o contraseña incorrectos')
+    .regex(/^[a-zA-Z0-9]+$/, 'Usuario o contraseña incorrectos'),
+
+  password: z
+    .string({ required_error: 'La contraseña es obligatoria' })
+    .min(1, 'La contraseña es obligatoria'),
+});
+
 module.exports = { registerSchema, resendVerificationSchema };

@@ -17,5 +17,6 @@ router.post(
   validate(resendVerificationSchema),
   userController.resendVerification
 );
+router.post('/delete', validate(deleteSchema), userController.delete);
 
 module.exports = router;

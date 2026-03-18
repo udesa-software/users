@@ -53,6 +53,15 @@ const userRepository = {
       [userId]
     );
   },
+
+  async markDeleted(userId) {
+    await query(
+      `UPDATE users
+       SET is_deleted = TRUE, updated_at = NOW()
+       WHERE id = $1`,
+      [userId]
+    );
+  },
 };
 
 module.exports = { userRepository };

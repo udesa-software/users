@@ -36,6 +36,18 @@ const userController = {
       next(err);
     }
   },
+
+  async delete(req, res, next) {
+    try {
+      const user = await userService.delete(req.body);
+      res.status(201).json({
+        message: 'Tu cuenta ha sido borrada.',
+        user,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
 };
 
 module.exports = { userController };
