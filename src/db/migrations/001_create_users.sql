@@ -19,3 +19,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS users_username_idx ON users (username);
 
 -- Case-insensitive unique email (CA.7)
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_idx ON users (LOWER(email));
+
+
