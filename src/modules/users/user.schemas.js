@@ -20,6 +20,10 @@ const registerSchema = z.object({
     .min(8, 'La contraseña debe tener al menos 8 caracteres')
     .regex(/[A-Z]/, 'La contraseña debe tener al menos una letra mayúscula')
     .regex(/[0-9]/, 'La contraseña debe tener al menos un número'),
+
+  acceptedTerms: z
+    .boolean({ required_error: 'Leer y aceptar los Términos y Condiciones y la Política de Privacidad es obligatorio' }),
+
 });
 
 const resendVerificationSchema = z.object({
