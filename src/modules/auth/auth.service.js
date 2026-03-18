@@ -36,10 +36,6 @@ const authService = {
       throw new AppError(401, 'Credenciales inválidas');
     }
 
-    if(user.is_suspended){
-      throw new AppError(401, 'Tu cuenta fue eliminada');
-    }
-
     // Login exitoso: resetea el contador de intentos fallidos
     await userRepository.resetFailedAttempts(user.id);
 
