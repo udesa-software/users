@@ -1,7 +1,7 @@
 const { z } = require('zod');
 
 const loginSchema = z.object({
-  login: z
+  email_or_username: z
     .string({ required_error: 'El email o usuario es obligatorio' })
     .min(1, 'El email o usuario es obligatorio'),
 

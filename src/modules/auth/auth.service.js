@@ -5,11 +5,13 @@ const { AppError } = require('../../middlewares/errorHandler');
 const { env } = require('../../config/env');
 
 const authService = {
-  async login({ login, password }) {
-    let user = await userRepository.findByEmail(login.toLowerCase());
+  async login({ email_or_username, password }) {
+    let user;
 
-    if (!user) {
-      user = await userRepository.findByUsername(login);
+    if (email_or_username.includes('@')) {
+      user = await userRepository.findByEmail(email_or_username.toLowerCase());
+    } else {
+      user = await userRepository.findByUsername(email_or_username);
     }
 
     // CA.3: mismo mensaje genérico para "no existe" y "contraseña incorrecta"
