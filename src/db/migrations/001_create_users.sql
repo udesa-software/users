@@ -12,7 +12,6 @@ CREATE TABLE IF NOT EXISTS users (
   locked_until          TIMESTAMPTZ,
   is_suspended          BOOLEAN     NOT NULL DEFAULT FALSE,
   deleted_at            TIMESTAMPTZ,
-  -- H5: Forgot Password & Session Revocation
   password_reset_token      UUID,
   password_reset_expires_at TIMESTAMPTZ,
   last_reset_request_at     TIMESTAMPTZ,
