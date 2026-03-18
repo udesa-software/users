@@ -57,7 +57,7 @@ const userRepository = {
   async markDeleted(userId) {
     await query(
       `UPDATE users
-       SET is_deleted = TRUE, updated_at = NOW()
+       SET is_suspended = TRUE, deleted_at = NOW()
        WHERE id = $1`,
       [userId]
     );

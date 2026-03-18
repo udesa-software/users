@@ -40,4 +40,4 @@ const deleteSchema = z.object({
     .min(1, 'La contraseña es obligatoria'),
 });
 
-module.exports = { registerSchema, resendVerificationSchema };
+module.exports = { registerSchema, resendVerificationSchema, deleteSchema };

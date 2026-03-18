@@ -8,7 +8,10 @@ CREATE TABLE IF NOT EXISTS users (
   token_expires_at TIMESTAMPTZ,
   created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  is_deleted       BOOLEAN      NOT NULL DEFAULT FALSE
+  failed_login_attempts INT         NOT NULL DEFAULT 0,
+  locked_until          TIMESTAMPTZ,
+  is_suspended          BOOLEAN     NOT NULL DEFAULT FALSE,
+  deleted_at            TIMESTAMPTZ
 );
 
 -- Unique username (case-sensitive as per CA.3)

@@ -95,7 +95,7 @@ const userService = {
       throw new AppError(401, 'Email o contraseña incorrectos');
     }
 
-    const user = await userRepository.markDeleted(input.username);
+    const user = await userRepository.markDeleted(existingUsername.id);
   },
 
 };

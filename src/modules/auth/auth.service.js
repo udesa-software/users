@@ -23,7 +23,7 @@ const authService = {
       throw new AppError(401, 'Email o contraseña incorrectos');
     }
 
-    if(user.is_deleted){
+    if(user.is_suspended){
       throw new AppError(401, 'Tu cuenta fue eliminada');
     }
 
