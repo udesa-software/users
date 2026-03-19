@@ -39,11 +39,9 @@ const userController = {
 
   async delete(req, res, next) {
     try {
-      const user = await userService.delete(req.body);
-      res.status(201).json({
-        message: 'Tu cuenta ha sido borrada.',
-        user,
-      });
+      // req.user.sub viene del JWT verificado por el middleware authenticate
+      await userService.delete(req.user.sub, req.body.password);
+      res.status(200).json({ message: 'Tu cuenta ha sido eliminada.' });
     } catch (err) {
       next(err);
     }

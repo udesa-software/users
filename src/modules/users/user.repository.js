@@ -10,6 +10,14 @@ const userRepository = {
     return result.rows[0] ?? null;
   },
 
+  async findById(id) {
+    const result = await query(
+      'SELECT * FROM users WHERE id = $1',
+      [id]
+    );
+    return result.rows[0] ?? null;
+  },
+
   async findByUsername(username) {
     const result = await query(
       'SELECT * FROM users WHERE username = $1',

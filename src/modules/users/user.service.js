@@ -83,19 +83,21 @@ const userService = {
     );
   },
 
-  async delete(input) {
-
-    const existingUsername = await userRepository.findByUsername(input.username);
-    if (!existingUsername) {
-      throw new AppError(401, 'Email o contraseña incorrectos');
+  // CA.3: userId viene del JWT (req.user.sub), password es solo la confirmación
+  async delete(userId, password) {
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new AppError(404, 'Usuario no encontrado');
     }
 
-    const passwordMatch = await bcrypt.compare(input.password, existingUsername.password_hash);
+    // CA.3: confirmar identidad con contraseña antes de borrar
+    const passwordMatch = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatch) {
-      throw new AppError(401, 'Email o contraseña incorrectos');
+      throw new AppError(401, 'Contraseña incorrecta');
     }
 
-    const user = await userRepository.markDeleted(existingUsername.id);
+    // CA.1: soft-delete — no borra la fila, solo marca deleted_at
+    await userRepository.markDeleted(userId);
   },
 
 };
