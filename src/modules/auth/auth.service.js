@@ -7,13 +7,13 @@ const { AppError } = require('../../middlewares/errorHandler');
 const { env } = require('../../config/env');
 
 const authService = {
-  async login({ email_or_username, password }) {
+  async login({ identifier, password }) {
     // CA.3: support email or username
     let user = null;
-    if (email_or_username.includes('@')) {
-      user = await userRepository.findByEmail(email_or_username.toLowerCase());
+    if (identifier.includes('@')) {
+      user = await userRepository.findByEmail(identifier.toLowerCase());
     } else {
-      user = await userRepository.findByUsername(email_or_username);
+      user = await userRepository.findByUsername(identifier);
     }
 
     // CA.3: mismo mensaje genérico para "no existe" y "contraseña incorrecta"
@@ -129,6 +129,22 @@ const authService = {
     await userRepository.updatePasswordAndInvalidateResetToken(user.id, newPasswordHash);
 
     return { message: 'Tu contraseña ha sido actualizada con éxito. Por favor, iniciá sesión de nuevo.' };
+  },
+
+  async verifyResetToken(token) {
+    if (!token) {
+      throw new AppError(400, 'Token requerido');
+    }
+
+    const user = await userRepository.findByPasswordResetToken(token);
+    if (!user) {
+      throw new AppError(400, 'El token es inválido o ha expirado. Por favor, solicitá uno nuevo.');
+    }
+
+    return { 
+      message: 'Token válido. Por favor, ingresá tu nueva contraseña.',
+      token 
+    };
   },
 };
 

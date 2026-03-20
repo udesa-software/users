@@ -14,4 +14,7 @@ router.post('/forgot-password', validate(forgotPasswordSchema), authController.f
 // POST /api/auth/reset-password
 router.post('/reset-password', validate(resetPasswordSchema), authController.resetPassword);
 
+// GET /api/auth/reset-password?token=<uuid>
+router.get('/reset-password', authController.verifyResetToken);
+
 module.exports = router;

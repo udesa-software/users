@@ -30,6 +30,16 @@ const authController = {
       next(err);
     }
   },
+
+  async verifyResetToken(req, res, next) {
+    try {
+      const token = req.query['token'];
+      const result = await authService.verifyResetToken(token);
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
 };
 
 module.exports = { authController };
