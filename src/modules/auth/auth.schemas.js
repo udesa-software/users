@@ -1,9 +1,9 @@
 const { z } = require('zod');
 
 const loginSchema = z.object({
-  email: z
-    .string({ required_error: 'El email es obligatorio' })
-    .email('El formato del email no es válido'),
+  email_or_username: z
+    .string({ required_error: 'El email o nombre de usuario es obligatorio' })
+    .min(1, 'El email o nombre de usuario es obligatorio'),
 
   password: z
     .string({ required_error: 'La contraseña es obligatoria' })
