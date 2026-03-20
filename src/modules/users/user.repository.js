@@ -10,6 +10,14 @@ const userRepository = {
     return result.rows[0] ?? null;
   },
 
+  async findById(id) {
+    const result = await query(
+      'SELECT * FROM users WHERE id = $1',
+      [id]
+    );
+    return result.rows[0] ?? null;
+  },
+
   async findByUsername(username) {
     const result = await query(
       'SELECT * FROM users WHERE username = $1',
@@ -49,6 +57,15 @@ const userRepository = {
     await query(
       `UPDATE users
        SET is_verified = TRUE, verify_token = NULL, token_expires_at = NULL, updated_at = NOW()
+       WHERE id = $1`,
+      [userId]
+    );
+  },
+
+  async markDeleted(userId) {
+    await query(
+      `UPDATE users
+       SET deleted_at = NOW()
        WHERE id = $1`,
       [userId]
     );

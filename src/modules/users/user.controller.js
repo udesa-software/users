@@ -36,6 +36,16 @@ const userController = {
       next(err);
     }
   },
+
+  async delete(req, res, next) {
+    try {
+      // req.user.sub viene del JWT verificado por el middleware authenticate
+      await userService.delete(req.user.sub, req.body.password);
+      res.status(200).json({ message: 'Tu cuenta ha sido eliminada.' });
+    } catch (err) {
+      next(err);
+    }
+  },
 };
 
 module.exports = { userController };
