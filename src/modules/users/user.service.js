@@ -82,6 +82,24 @@ const userService = {
       console.error('Failed to resend verification email:', err)
     );
   },
+
+  // CA.3: userId viene del JWT (req.user.sub), password es solo la confirmación
+  async delete(userId, password) {
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new AppError(404, 'Usuario no encontrado');
+    }
+
+    // CA.3: confirmar identidad con contraseña antes de borrar
+    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    if (!passwordMatch) {
+      throw new AppError(401, 'Contraseña incorrecta');
+    }
+
+    // CA.1: soft-delete — no borra la fila, solo marca deleted_at
+    await userRepository.markDeleted(userId);
+  },
+
 };
 
 module.exports = { userService };

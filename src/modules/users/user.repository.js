@@ -10,6 +10,14 @@ const userRepository = {
     return result.rows[0] ?? null;
   },
 
+  async findById(id) {
+    const result = await query(
+      'SELECT * FROM users WHERE id = $1',
+      [id]
+    );
+    return result.rows[0] ?? null;
+  },
+
   async findByUsername(username) {
     const result = await query(
       'SELECT * FROM users WHERE LOWER(username) = LOWER($1)',
@@ -91,6 +99,11 @@ const userRepository = {
   async incrementTokenVersion(userId) {
     await query(
       `UPDATE users SET token_version = token_version + 1, updated_at = NOW() WHERE id = $1`,
+  async markDeleted(userId) {
+    await query(
+      `UPDATE users
+       SET deleted_at = NOW()
+       WHERE id = $1`,
       [userId]
     );
   },
