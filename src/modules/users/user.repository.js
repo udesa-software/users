@@ -99,6 +99,10 @@ const userRepository = {
   async incrementTokenVersion(userId) {
     await query(
       `UPDATE users SET token_version = token_version + 1, updated_at = NOW() WHERE id = $1`,
+      [userId]
+    );
+  },
+
   async markDeleted(userId) {
     await query(
       `UPDATE users
