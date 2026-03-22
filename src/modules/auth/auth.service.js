@@ -13,7 +13,7 @@ const authService = {
     if (identifier.includes('@')) {
       user = await userRepository.findByEmail(identifier.toLowerCase());
     } else {
-      user = await userRepository.findByUsername(identifier);
+      user = await userRepository.findByUsername(identifier.toLowerCase());
     }
 
     // CA.3: mismo mensaje genérico para "no existe" y "contraseña incorrecta"
@@ -70,7 +70,7 @@ const authService = {
     // CA.4: find by email or username, always return same message
     let user = await userRepository.findByEmail(identifier.toLowerCase());
     if (!user) {
-      user = await userRepository.findByUsername(identifier);
+      user = await userRepository.findByUsername(identifier.toLowerCase());
     }
 
     // generic message to avoid enumeration (CA.4)

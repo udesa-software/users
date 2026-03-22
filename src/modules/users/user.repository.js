@@ -46,7 +46,7 @@ const userRepository = {
   async create({ username, email, passwordHash, verifyToken, tokenExpiresAt }) {
     const result = await query(
       `INSERT INTO users (username, email, password_hash, verify_token, token_expires_at)
-       VALUES ($1, LOWER($2), $3, $4, $5)
+       VALUES (LOWER($1), LOWER($2), $3, $4, $5)
        RETURNING id, username, email, is_verified, created_at`,
       [username, email, passwordHash, verifyToken, tokenExpiresAt]
     );
