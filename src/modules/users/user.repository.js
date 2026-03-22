@@ -112,18 +112,18 @@ const userRepository = {
     );
   },
 
-  // CA.2: incrementa el contador de intentos fallidos y bloquea si llega a 5
-  async incrementFailedAttempts(userId) {
+  // CA.2: incrementa el contador de intentos fallidos y bloquea si llega al threshold
+  async incrementFailedAttempts(userId, threshold = 5) {
     await query(
       `UPDATE users
        SET failed_login_attempts = failed_login_attempts + 1,
            locked_until = CASE
-             WHEN failed_login_attempts + 1 >= 5 THEN NOW() + INTERVAL '15 minutes'
+             WHEN failed_login_attempts + 1 >= $1 THEN NOW() + INTERVAL '15 minutes'
              ELSE locked_until
            END,
            updated_at = NOW()
-       WHERE id = $1`,
-      [userId]
+       WHERE id = $2`,
+      [threshold, userId]
     );
   },
 

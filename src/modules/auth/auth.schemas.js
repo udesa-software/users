@@ -31,4 +31,22 @@ const resetPasswordSchema = z.object({
     .string({ required_error: 'La confirmación de la contraseña es obligatoria' }),
 });
 
-module.exports = { loginSchema, forgotPasswordSchema, resetPasswordSchema };
+const changePasswordSchema = z.object({
+  currentPassword: z
+    .string({ required_error: 'La contraseña actual es obligatoria' })
+    .min(1, 'La contraseña actual es obligatoria'),
+
+  newPassword: z
+    .string({ required_error: 'La nueva contraseña es obligatoria' })
+    .min(8, 'La nueva contraseña debe tener al menos 8 caracteres')
+    .regex(/[A-Z]/, 'La nueva contraseña debe tener al menos una letra mayúscula')
+    .regex(/[0-9]/, 'La nueva contraseña debe tener al menos un número'),
+
+  confirmPassword: z
+    .string({ required_error: 'La confirmación de la nueva contraseña es obligatoria' }),
+}).refine((data) => data.newPassword === data.confirmPassword, {
+  message: 'Las contraseñas no coinciden',
+  path: ['confirmPassword'],
+});
+
+module.exports = { loginSchema, forgotPasswordSchema, resetPasswordSchema, changePasswordSchema };
