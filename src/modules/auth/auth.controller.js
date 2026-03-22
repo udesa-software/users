@@ -31,6 +31,15 @@ const authController = {
     }
   },
 
+  async logout(req, res, next) {
+    try {
+      const result = await authService.logout(req.user.sub);
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async verifyResetToken(req, res, next) {
     try {
       const token = req.query['token'];
