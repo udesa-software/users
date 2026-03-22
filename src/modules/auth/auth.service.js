@@ -131,6 +131,11 @@ const authService = {
     return { message: 'Tu contraseña ha sido actualizada con éxito. Por favor, iniciá sesión de nuevo.' };
   },
 
+  async logout(userId) {
+    await userRepository.incrementTokenVersion(userId);
+    return { message: 'Sesión cerrada exitosamente.' };
+  },
+
   async verifyResetToken(token) {
     if (!token) {
       throw new AppError(400, 'Token requerido');
