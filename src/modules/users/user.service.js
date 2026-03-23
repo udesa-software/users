@@ -14,8 +14,9 @@ function tokenExpiresAt() {
 
 const userService = {
   async register(input) {
-    // CA.7: normalize email to lowercase before any lookup
+    // CA.7: normalize email and username to lowercase before any lookup
     const email = input.email.toLowerCase();
+    const username = input.username.toLowerCase();
 
     // CA.2: no duplicate emails (case-insensitive)
     const existingEmail = await userRepository.findByEmail(email);
@@ -43,7 +44,7 @@ const userService = {
     const acceptedTermsAt = new Date();
 
     const user = await userRepository.create({
-      username: input.username,
+      username,
       email,
       passwordHash,
       verifyToken,

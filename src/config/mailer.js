@@ -80,4 +80,25 @@ async function sendResetPasswordEmail(toEmail, token) {
   });
 }
 
-module.exports = { sendVerificationEmail, sendResetPasswordEmail };
+async function sendPasswordChangedEmail(toEmail) {
+  if (!transporter) {
+    console.log('─────────────────────────────────────────────');
+    console.log('[DEV] Password changed email (not sent)');
+    console.log(`   To:    ${toEmail}`);
+    console.log('─────────────────────────────────────────────');
+    return;
+  }
+
+  await transporter.sendMail({
+    from: env.SMTP_FROM,
+    to: toEmail,
+    subject: 'Tu contraseña ha sido modificada',
+    html: `
+      <h2>Notificación de cambio de contraseña</h2>
+      <p>Te informamos que tu contraseña ha sido modificada con éxito.</p>
+      <p>Si no realizaste este cambio, te recomendamos contactar a soporte técnico de inmediato.</p>
+    `,
+  });
+}
+
+module.exports = { sendVerificationEmail, sendResetPasswordEmail, sendPasswordChangedEmail };

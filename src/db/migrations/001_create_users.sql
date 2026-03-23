@@ -20,8 +20,8 @@ CREATE TABLE IF NOT EXISTS users (
   token_version             INT         NOT NULL DEFAULT 1
 );
 
--- Unique username (case-sensitive as per CA.3)
-CREATE UNIQUE INDEX IF NOT EXISTS users_username_idx ON users (username);
+-- Case-insensitive unique username (CA.3)
+CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx ON users (LOWER(username));
 
 -- Case-insensitive unique email (CA.7)
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_idx ON users (LOWER(email));

@@ -46,7 +46,7 @@ const userRepository = {
   async create({ username, email, passwordHash, verifyToken, tokenExpiresAt, acceptedTerms, acceptedTermsAt }) {
     const result = await query(
       `INSERT INTO users (username, email, password_hash, verify_token, token_expires_at, accepted_terms, accepted_terms_at)
-       VALUES ($1, LOWER($2), $3, $4, $5, $6, $7)
+       VALUES (LOWER($1), LOWER($2), $3, $4, $5, $6, $7)
        RETURNING id, username, email, is_verified, created_at, accepted_terms, accepted_terms_at`,
       [username, email, passwordHash, verifyToken, tokenExpiresAt, acceptedTerms, acceptedTermsAt]
     );
@@ -112,18 +112,18 @@ const userRepository = {
     );
   },
 
-  // CA.2: incrementa el contador de intentos fallidos y bloquea si llega a 5
+  // CA.2: incrementa el contador de intentos fallidos y bloquea si llega al threshold
   async incrementFailedAttempts(userId) {
     await query(
       `UPDATE users
        SET failed_login_attempts = failed_login_attempts + 1,
            locked_until = CASE
-             WHEN failed_login_attempts + 1 >= 5 THEN NOW() + INTERVAL '15 minutes'
+             WHEN failed_login_attempts + 1 >= $1 THEN NOW() + INTERVAL '15 minutes'
              ELSE locked_until
            END,
            updated_at = NOW()
-       WHERE id = $1`,
-      [userId]
+       WHERE id = $2`,
+      [threshold, userId]
     );
   },
 
