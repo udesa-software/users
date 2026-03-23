@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS users (
   is_verified      BOOLEAN      NOT NULL DEFAULT FALSE,
   verify_token     UUID,
   token_expires_at TIMESTAMPTZ,
+  accepted_terms       BOOLEAN      NOT NULL DEFAULT FALSE,
+  accepted_terms_at    TIMESTAMPTZ,
   created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   failed_login_attempts INT         NOT NULL DEFAULT 0,

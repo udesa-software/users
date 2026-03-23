@@ -30,6 +30,10 @@ const userService = {
       throw new AppError(409, 'El nombre de usuario ya está en uso');
     }
 
+    if (!input.acceptedTerms) {
+      throw new AppError(400, 'Se deben leer y aceptar los Términos y Condiciones y la Política de Privacidad');
+    }
+
     // CA.4: hash password
     const passwordHash = await bcrypt.hash(input.password, 12);
 
@@ -37,12 +41,16 @@ const userService = {
     const verifyToken = uuidv4();
     const expiresAt = tokenExpiresAt();
 
+    const acceptedTermsAt = new Date();
+
     const user = await userRepository.create({
       username,
       email,
       passwordHash,
       verifyToken,
       tokenExpiresAt: expiresAt,
+      acceptedTerms: input.acceptedTerms,
+      acceptedTermsAt,
     });
 
     // Send email fire-and-forget (don't block registration on mail failure)

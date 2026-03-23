@@ -43,12 +43,12 @@ const userRepository = {
     return result.rows[0] ?? null;
   },
 
-  async create({ username, email, passwordHash, verifyToken, tokenExpiresAt }) {
+  async create({ username, email, passwordHash, verifyToken, tokenExpiresAt, acceptedTerms, acceptedTermsAt }) {
     const result = await query(
-      `INSERT INTO users (username, email, password_hash, verify_token, token_expires_at)
-       VALUES (LOWER($1), LOWER($2), $3, $4, $5)
-       RETURNING id, username, email, is_verified, created_at`,
-      [username, email, passwordHash, verifyToken, tokenExpiresAt]
+      `INSERT INTO users (username, email, password_hash, verify_token, token_expires_at, accepted_terms, accepted_terms_at)
+       VALUES (LOWER($1), LOWER($2), $3, $4, $5, $6, $7)
+       RETURNING id, username, email, is_verified, created_at, accepted_terms, accepted_terms_at`,
+      [username, email, passwordHash, verifyToken, tokenExpiresAt, acceptedTerms, acceptedTermsAt]
     );
     return result.rows[0];
   },

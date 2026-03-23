@@ -20,5 +20,7 @@ router.get('/reset-password', authController.verifyResetToken);
 
 // POST /api/auth/change-password
 router.post('/change-password', authenticate, validate(changePasswordSchema), authController.changePassword);
+// POST /api/auth/logout
+router.post('/logout', authenticate, authController.logout);
 
 module.exports = router;
