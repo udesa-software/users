@@ -40,7 +40,7 @@ const authService = {
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatch) {
       // CA.2: incrementa el contador; si llega a 5 se bloquea automáticamente en la DB
-      await userRepository.incrementFailedAttempts(user.id);
+      await userRepository.incrementFailedAttempts(user.id, 5);
       throw new AppError(401, 'Credenciales inválidas');
     }
 
