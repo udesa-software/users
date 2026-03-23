@@ -10,9 +10,17 @@ const userRepository = {
     return result.rows[0] ?? null;
   },
 
+  async findById(id) {
+    const result = await query(
+      'SELECT * FROM users WHERE id = $1',
+      [id]
+    );
+    return result.rows[0] ?? null;
+  },
+
   async findByUsername(username) {
     const result = await query(
-      'SELECT * FROM users WHERE username = $1',
+      'SELECT * FROM users WHERE LOWER(username) = LOWER($1)',
       [username]
     );
     return result.rows[0] ?? null;
@@ -22,6 +30,14 @@ const userRepository = {
   async findByVerifyToken(token) {
     const result = await query(
       'SELECT * FROM users WHERE verify_token = $1 AND token_expires_at > NOW()',
+      [token]
+    );
+    return result.rows[0] ?? null;
+  },
+
+  async findByPasswordResetToken(token) {
+    const result = await query(
+      'SELECT * FROM users WHERE password_reset_token = $1 AND password_reset_expires_at > NOW()',
       [token]
     );
     return result.rows[0] ?? null;
@@ -49,6 +65,48 @@ const userRepository = {
     await query(
       `UPDATE users
        SET is_verified = TRUE, verify_token = NULL, token_expires_at = NULL, updated_at = NOW()
+       WHERE id = $1`,
+      [userId]
+    );
+  },
+
+  async updatePasswordResetToken(userId, token, expiresAt) {
+    await query(
+      `UPDATE users
+       SET password_reset_token = $1, password_reset_expires_at = $2, updated_at = NOW()
+       WHERE id = $3`,
+      [token, expiresAt, userId]
+    );
+  },
+
+  async updateLastResetRequest(userId) {
+    await query(
+      `UPDATE users SET last_reset_request_at = NOW(), updated_at = NOW() WHERE id = $1`,
+      [userId]
+    );
+  },
+
+  async updatePasswordAndInvalidateResetToken(userId, passwordHash) {
+    await query(
+      `UPDATE users
+       SET password_hash = $1, password_reset_token = NULL, password_reset_expires_at = NULL,
+           token_version = token_version + 1, updated_at = NOW()
+       WHERE id = $2`,
+      [passwordHash, userId]
+    );
+  },
+
+  async incrementTokenVersion(userId) {
+    await query(
+      `UPDATE users SET token_version = token_version + 1, updated_at = NOW() WHERE id = $1`,
+      [userId]
+    );
+  },
+
+  async markDeleted(userId) {
+    await query(
+      `UPDATE users
+       SET deleted_at = NOW()
        WHERE id = $1`,
       [userId]
     );
