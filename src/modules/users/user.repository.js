@@ -113,7 +113,7 @@ const userRepository = {
   },
 
   // CA.2: incrementa el contador de intentos fallidos y bloquea si llega al threshold
-  async incrementFailedAttempts(userId) {
+  async incrementFailedAttempts(userId, threshold) {
     await query(
       `UPDATE users
        SET failed_login_attempts = failed_login_attempts + 1,
