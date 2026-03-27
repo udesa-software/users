@@ -1,0 +1,299 @@
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { v4: uuidv4 } = require('uuid');
+const { authService } = require('../auth.service');
+const { userRepository } = require('../../users/user.repository');
+const { sendResetPasswordEmail, sendPasswordChangedEmail } = require('../../../config/mailer');
+const { AppError } = require('../../../middlewares/errorHandler');
+
+jest.mock('../../users/user.repository', () => ({
+  userRepository: {
+    findByEmail: jest.fn(),
+    findByUsername: jest.fn(),
+    findById: jest.fn(),
+    findByPasswordResetToken: jest.fn(),
+    incrementFailedAttempts: jest.fn(),
+    resetFailedAttempts: jest.fn(),
+    incrementTokenVersion: jest.fn(),
+    updatePasswordResetToken: jest.fn(),
+    updateLastResetRequest: jest.fn(),
+    updatePasswordAndInvalidateResetToken: jest.fn(),
+  },
+}));
+
+jest.mock('../../../config/mailer', () => ({
+  sendResetPasswordEmail: jest.fn(),
+  sendPasswordChangedEmail: jest.fn(),
+}));
+
+// env.js llama process.exit si no hay variables de entorno, lo mockeamos
+jest.mock('../../../config/env', () => ({
+  env: { JWT_SECRET: 'test-secret', JWT_EXPIRES_IN: '7d' },
+}));
+
+jest.mock('bcryptjs');
+jest.mock('jsonwebtoken');
+jest.mock('uuid');
+
+// Datos de prueba
+
+const USUARIO_DB = {
+  id: 'user-uuid-1',
+  username: 'testuser',
+  email: 'test@example.com',
+  password_hash: 'hashed_password',
+  is_verified: true,
+  deleted_at: null,
+  is_suspended: false,
+  locked_until: null,
+  token_version: 1,
+  last_reset_request_at: null,
+  created_at: new Date('2024-01-01'),
+};
+
+// Fecha en el futuro para simular cuenta bloqueada
+const BLOQUEADO_HASTA = new Date(Date.now() + 15 * 60 * 1000);
+
+// login 
+
+describe('authService.login', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    userRepository.findByEmail.mockResolvedValue(USUARIO_DB);
+    userRepository.findByUsername.mockResolvedValue(USUARIO_DB);
+    bcrypt.compare.mockResolvedValue(true);
+    jwt.sign.mockReturnValue('jwt-token-mock');
+    userRepository.resetFailedAttempts.mockResolvedValue();
+    userRepository.incrementFailedAttempts.mockResolvedValue();
+  });
+
+  it('devuelve token y datos del usuario cuando las credenciales son correctas', async () => {
+    const result = await authService.login({ identifier: 'test@example.com', password: 'Password1' });
+
+    expect(result.token).toBe('jwt-token-mock');
+    expect(result.user).toMatchObject({ id: 'user-uuid-1', username: 'testuser' });
+  });
+
+  it('busca por email cuando el identifier contiene @', async () => {
+    await authService.login({ identifier: 'TEST@EXAMPLE.COM', password: 'Password1' });
+
+    expect(userRepository.findByEmail).toHaveBeenCalledWith('test@example.com');
+    expect(userRepository.findByUsername).not.toHaveBeenCalled();
+  });
+
+  it('busca por username cuando el identifier no contiene @', async () => {
+    await authService.login({ identifier: 'testuser', password: 'Password1' });
+
+    expect(userRepository.findByUsername).toHaveBeenCalledWith('testuser');
+    expect(userRepository.findByEmail).not.toHaveBeenCalled();
+  });
+
+  it('genera el JWT con los datos del usuario', async () => {
+    await authService.login({ identifier: 'test@example.com', password: 'Password1' });
+
+    expect(jwt.sign).toHaveBeenCalledWith(
+      expect.objectContaining({ sub: 'user-uuid-1', username: 'testuser', token_version: 1 }),
+      'test-secret',
+      { expiresIn: '7d' }
+    );
+  });
+
+  it('resetea el contador de intentos fallidos al loguear correctamente', async () => {
+    await authService.login({ identifier: 'test@example.com', password: 'Password1' });
+
+    expect(userRepository.resetFailedAttempts).toHaveBeenCalledWith('user-uuid-1');
+  });
+
+  it('lanza error 401 genérico si el usuario no existe', async () => {
+    userRepository.findByEmail.mockResolvedValue(null);
+
+    await expect(
+      authService.login({ identifier: 'noexiste@x.com', password: 'Password1' })
+    ).rejects.toMatchObject({ statusCode: 401, message: 'Credenciales inválidas' });
+  });
+
+  it('lanza error 403 si la cuenta fue eliminada (soft-delete)', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, deleted_at: new Date() });
+
+    await expect(
+      authService.login({ identifier: 'test@example.com', password: 'Password1' })
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it('lanza error 403 si la cuenta está suspendida por un admin', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_suspended: true });
+
+    await expect(
+      authService.login({ identifier: 'test@example.com', password: 'Password1' })
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it('lanza error 423 si la cuenta está bloqueada por intentos fallidos', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, locked_until: BLOQUEADO_HASTA });
+
+    await expect(
+      authService.login({ identifier: 'test@example.com', password: 'Password1' })
+    ).rejects.toMatchObject({ statusCode: 423 });
+  });
+
+  it('lanza error 403 si el email no está verificado', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: false });
+
+    await expect(
+      authService.login({ identifier: 'test@example.com', password: 'Password1' })
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it('lanza error 401 genérico si la contraseña es incorrecta', async () => {
+    bcrypt.compare.mockResolvedValue(false);
+
+    await expect(
+      authService.login({ identifier: 'test@example.com', password: 'wrong' })
+    ).rejects.toMatchObject({ statusCode: 401, message: 'Credenciales inválidas' });
+  });
+
+  it('incrementa el contador de intentos fallidos si la contraseña es incorrecta', async () => {
+    bcrypt.compare.mockResolvedValue(false);
+
+    await expect(authService.login({ identifier: 'test@example.com', password: 'wrong' })).rejects.toThrow();
+    expect(userRepository.incrementFailedAttempts).toHaveBeenCalledWith('user-uuid-1', 5);
+  });
+});
+
+// logout 
+
+describe('authService.logout', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('incrementa el token_version para revocar todas las sesiones activas', async () => {
+    userRepository.incrementTokenVersion.mockResolvedValue();
+
+    await authService.logout('user-uuid-1');
+
+    expect(userRepository.incrementTokenVersion).toHaveBeenCalledWith('user-uuid-1');
+  });
+
+  it('devuelve un mensaje de confirmación', async () => {
+    userRepository.incrementTokenVersion.mockResolvedValue();
+
+    const result = await authService.logout('user-uuid-1');
+
+    expect(result.message).toBeDefined();
+  });
+});
+
+// requestPasswordReset 
+
+describe('authService.requestPasswordReset', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    uuidv4.mockReturnValue('reset-token-uuid');
+    userRepository.updatePasswordResetToken.mockResolvedValue();
+    userRepository.updateLastResetRequest.mockResolvedValue();
+    sendResetPasswordEmail.mockResolvedValue();
+  });
+
+  it('devuelve mensaje genérico si el email no está registrado', async () => {
+    userRepository.findByEmail.mockResolvedValue(null);
+    userRepository.findByUsername.mockResolvedValue(null);
+
+    const result = await authService.requestPasswordReset('noexiste@x.com');
+
+    expect(result.message).toBeDefined();
+    expect(userRepository.updatePasswordResetToken).not.toHaveBeenCalled();
+  });
+
+  it('busca por username si el identifier no tiene @', async () => {
+    userRepository.findByEmail.mockResolvedValue(null);
+    userRepository.findByUsername.mockResolvedValue(USUARIO_DB);
+
+    await authService.requestPasswordReset('testuser');
+
+    expect(userRepository.findByUsername).toHaveBeenCalledWith('testuser');
+  });
+
+  it('devuelve mensaje genérico si el usuario está en throttle (menos de 1 min)', async () => {
+    const hacePocoTiempo = new Date(Date.now() - 30 * 1000); // hace 30 segundos
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, last_reset_request_at: hacePocoTiempo });
+
+    const result = await authService.requestPasswordReset('test@example.com');
+
+    expect(result.message).toBeDefined();
+    expect(userRepository.updatePasswordResetToken).not.toHaveBeenCalled();
+  });
+
+  it('genera un token y lo guarda si pasó más de 1 minuto desde el último pedido', async () => {
+    const haceUnMinuto = new Date(Date.now() - 61 * 1000);
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, last_reset_request_at: haceUnMinuto });
+
+    await authService.requestPasswordReset('test@example.com');
+
+    expect(userRepository.updatePasswordResetToken).toHaveBeenCalledWith(
+      'user-uuid-1',
+      'reset-token-uuid',
+      expect.any(Date)
+    );
+  });
+
+  it('actualiza el timestamp del último pedido', async () => {
+    userRepository.findByEmail.mockResolvedValue(USUARIO_DB);
+
+    await authService.requestPasswordReset('test@example.com');
+
+    expect(userRepository.updateLastResetRequest).toHaveBeenCalledWith('user-uuid-1');
+  });
+
+  it('envía el email con el token de reset', async () => {
+    userRepository.findByEmail.mockResolvedValue(USUARIO_DB);
+
+    await authService.requestPasswordReset('test@example.com');
+    await Promise.resolve(); // espera 
+
+    expect(sendResetPasswordEmail).toHaveBeenCalledWith('test@example.com', 'reset-token-uuid');
+  });
+
+  it('no falla si el envío del email falla', async () => {
+    userRepository.findByEmail.mockResolvedValue(USUARIO_DB);
+    sendResetPasswordEmail.mockRejectedValue(new Error('SMTP caído'));
+
+    await expect(authService.requestPasswordReset('test@example.com')).resolves.toBeDefined();
+  });
+
+  it('devuelve siempre el mismo mensaje genérico (no revela si existe el usuario)', async () => {
+    userRepository.findByEmail.mockResolvedValue(null);
+    userRepository.findByUsername.mockResolvedValue(null);
+    const resultSinUsuario = await authService.requestPasswordReset('noexiste@x.com');
+
+    userRepository.findByEmail.mockResolvedValue(USUARIO_DB);
+    const resultConUsuario = await authService.requestPasswordReset('test@example.com');
+
+    expect(resultSinUsuario.message).toBe(resultConUsuario.message);
+  });
+});
+
+// verifyResetToken 
+
+describe('authService.verifyResetToken', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('devuelve mensaje y token si el token es válido', async () => {
+    userRepository.findByPasswordResetToken.mockResolvedValue(USUARIO_DB);
+
+    const result = await authService.verifyResetToken('token-valido');
+
+    expect(result.token).toBe('token-valido');
+    expect(result.message).toBeDefined();
+  });
+
+  it('lanza error 400 si el token es undefined o vacío', async () => {
+    await expect(authService.verifyResetToken(undefined)).rejects.toMatchObject({ statusCode: 400 });
+    await expect(authService.verifyResetToken('')).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('lanza error 400 si el token no existe o expiró', async () => {
+    userRepository.findByPasswordResetToken.mockResolvedValue(null);
+
+    await expect(authService.verifyResetToken('token-vencido')).rejects.toMatchObject({ statusCode: 400 });
+  });
+});
+
