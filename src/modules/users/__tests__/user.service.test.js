@@ -144,3 +144,127 @@ describe('userService.register', () => {
   });
 });
 
+// verifyEmail 
+
+describe('userService.verifyEmail', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('marca la cuenta como verificada cuando el token es válido', async () => {
+    userRepository.findByVerifyToken.mockResolvedValue(USUARIO_DB);
+    userRepository.markVerified.mockResolvedValue();
+
+    await userService.verifyEmail('token-valido');
+
+    expect(userRepository.markVerified).toHaveBeenCalledWith('user-uuid-1');
+  });
+
+  it('lanza error 400 si el token no existe o ya expiró', async () => {
+    userRepository.findByVerifyToken.mockResolvedValue(null);
+
+    await expect(userService.verifyEmail('token-vencido')).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('no llama a markVerified si el token es inválido', async () => {
+    userRepository.findByVerifyToken.mockResolvedValue(null);
+
+    await expect(userService.verifyEmail('token-malo')).rejects.toThrow();
+    expect(userRepository.markVerified).not.toHaveBeenCalled();
+  });
+});
+
+// resendVerification 
+
+describe('userService.resendVerification', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    uuidv4.mockReturnValue('nuevo-token');
+    userRepository.updateVerifyToken.mockResolvedValue();
+    sendVerificationEmail.mockResolvedValue();
+  });
+
+  it('genera un nuevo token y actualiza el registro del usuario', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: false });
+
+    await userService.resendVerification('test@example.com');
+
+    expect(userRepository.updateVerifyToken).toHaveBeenCalledWith(
+      'user-uuid-1',
+      'nuevo-token',
+      expect.any(Date)
+    );
+  });
+
+  it('normaliza el email a minúsculas antes de buscar', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: false });
+
+    await userService.resendVerification('USER@EXAMPLE.COM');
+
+    expect(userRepository.findByEmail).toHaveBeenCalledWith('user@example.com');
+  });
+
+  it('envía el email con el nuevo token', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: false });
+
+    await userService.resendVerification('test@example.com');
+    await Promise.resolve(); // espera el fire-and-forget
+
+    expect(sendVerificationEmail).toHaveBeenCalledWith('test@example.com', 'nuevo-token');
+  });
+
+  it('no falla si el envío del email falla', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: false });
+    sendVerificationEmail.mockRejectedValue(new Error('SMTP caído'));
+
+    await expect(userService.resendVerification('test@example.com')).resolves.toBeUndefined();
+  });
+
+  it('lanza error 404 si el email no está registrado', async () => {
+    userRepository.findByEmail.mockResolvedValue(null);
+
+    await expect(userService.resendVerification('noexiste@x.com')).rejects.toMatchObject({ statusCode: 404 });
+    expect(userRepository.updateVerifyToken).not.toHaveBeenCalled();
+  });
+
+  it('lanza error 400 si la cuenta ya está verificada', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: true });
+
+    await expect(userService.resendVerification('test@example.com')).rejects.toMatchObject({ statusCode: 400 });
+    expect(userRepository.updateVerifyToken).not.toHaveBeenCalled();
+  });
+});
+
+// delete
+describe('userService.delete', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    userRepository.findById.mockResolvedValue(USUARIO_DB);
+    bcrypt.compare.mockResolvedValue(true);
+    userRepository.markDeleted.mockResolvedValue();
+  });
+
+  it('hace el soft-delete del usuario cuando la contraseña es correcta', async () => {
+    await userService.delete('user-uuid-1', 'Password1');
+
+    expect(userRepository.markDeleted).toHaveBeenCalledWith('user-uuid-1');
+  });
+
+  it('compara la contraseña ingresada contra el hash guardado en la base', async () => {
+    await userService.delete('user-uuid-1', 'Password1');
+
+    expect(bcrypt.compare).toHaveBeenCalledWith('Password1', 'hashed_password');
+  });
+
+  it('lanza error 404 si el usuario no existe', async () => {
+    userRepository.findById.mockResolvedValue(null);
+
+    await expect(userService.delete('user-uuid-1', 'Password1')).rejects.toMatchObject({ statusCode: 404 });
+    expect(userRepository.markDeleted).not.toHaveBeenCalled();
+  });
+
+  it('lanza error 401 si la contraseña es incorrecta', async () => {
+    bcrypt.compare.mockResolvedValue(false);
+
+    await expect(userService.delete('user-uuid-1', 'wrong')).rejects.toMatchObject({ statusCode: 401 });
+    expect(userRepository.markDeleted).not.toHaveBeenCalled();
+  });
+});
