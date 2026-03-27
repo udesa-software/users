@@ -297,3 +297,146 @@ describe('authService.verifyResetToken', () => {
   });
 });
 
+// resetPassword 
+
+describe('authService.resetPassword', () => {
+  const INPUT_VALIDO = {
+    token: 'reset-token',
+    password: 'NuevaPassword1',
+    confirmPassword: 'NuevaPassword1',
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    userRepository.findByPasswordResetToken.mockResolvedValue(USUARIO_DB);
+    bcrypt.compare.mockResolvedValue(false); // nueva contraseña ≠ anterior por defecto
+    bcrypt.hash.mockResolvedValue('nuevo-hash');
+    userRepository.updatePasswordAndInvalidateResetToken.mockResolvedValue();
+  });
+
+  it('actualiza la contraseña y invalida el token cuando todo es válido', async () => {
+    await authService.resetPassword(INPUT_VALIDO);
+
+    expect(bcrypt.hash).toHaveBeenCalledWith('NuevaPassword1', 12);
+    expect(userRepository.updatePasswordAndInvalidateResetToken).toHaveBeenCalledWith(
+      'user-uuid-1',
+      'nuevo-hash'
+    );
+  });
+
+  it('devuelve un mensaje de éxito', async () => {
+    const result = await authService.resetPassword(INPUT_VALIDO);
+
+    expect(result.message).toBeDefined();
+  });
+
+  it('lanza error 400 si las contraseñas no coinciden', async () => {
+    await expect(
+      authService.resetPassword({ ...INPUT_VALIDO, confirmPassword: 'OtraPassword1' })
+    ).rejects.toMatchObject({ statusCode: 400 });
+
+    expect(userRepository.updatePasswordAndInvalidateResetToken).not.toHaveBeenCalled();
+  });
+
+  it('lanza error 400 si el token es inválido o expiró', async () => {
+    userRepository.findByPasswordResetToken.mockResolvedValue(null);
+
+    await expect(authService.resetPassword(INPUT_VALIDO)).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('lanza error 400 si la nueva contraseña es igual a la anterior', async () => {
+    bcrypt.compare.mockResolvedValue(true); // misma contraseña
+
+    await expect(authService.resetPassword(INPUT_VALIDO)).rejects.toMatchObject({ statusCode: 400 });
+    expect(userRepository.updatePasswordAndInvalidateResetToken).not.toHaveBeenCalled();
+  });
+});
+
+// changePassword 
+describe('authService.changePassword', () => {
+  const INPUT_VALIDO = { currentPassword: 'Password1', newPassword: 'NuevaPassword1' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    userRepository.findById.mockResolvedValue(USUARIO_DB);
+    bcrypt.compare
+      .mockResolvedValueOnce(true)  // primera llamada: contraseña actual correcta
+      .mockResolvedValueOnce(false); // segunda llamada: nueva contraseña ≠ anterior
+    bcrypt.hash.mockResolvedValue('nuevo-hash');
+    userRepository.updatePasswordAndInvalidateResetToken.mockResolvedValue();
+    userRepository.resetFailedAttempts.mockResolvedValue();
+    sendPasswordChangedEmail.mockResolvedValue();
+  });
+
+  it('actualiza la contraseña e invalida todas las sesiones activas', async () => {
+    await authService.changePassword('user-uuid-1', INPUT_VALIDO);
+
+    expect(userRepository.updatePasswordAndInvalidateResetToken).toHaveBeenCalledWith(
+      'user-uuid-1',
+      'nuevo-hash'
+    );
+  });
+
+  it('resetea el contador de intentos fallidos al cambiar exitosamente', async () => {
+    await authService.changePassword('user-uuid-1', INPUT_VALIDO);
+
+    expect(userRepository.resetFailedAttempts).toHaveBeenCalledWith('user-uuid-1');
+  });
+
+  it('envía email de notificación al cambiar la contraseña', async () => {
+    await authService.changePassword('user-uuid-1', INPUT_VALIDO);
+    await Promise.resolve();
+
+    expect(sendPasswordChangedEmail).toHaveBeenCalledWith('test@example.com');
+  });
+
+  it('no falla si el envío del email de notificación falla', async () => {
+    sendPasswordChangedEmail.mockRejectedValue(new Error('SMTP caído'));
+
+    await expect(authService.changePassword('user-uuid-1', INPUT_VALIDO)).resolves.toBeDefined();
+  });
+
+  it('devuelve un mensaje de éxito', async () => {
+    const result = await authService.changePassword('user-uuid-1', INPUT_VALIDO);
+
+    expect(result.message).toBeDefined();
+  });
+
+  it('lanza error 404 si el usuario no existe', async () => {
+    userRepository.findById.mockResolvedValue(null);
+
+    await expect(authService.changePassword('user-uuid-1', INPUT_VALIDO)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('lanza error 423 si la cuenta está bloqueada', async () => {
+    userRepository.findById.mockResolvedValue({ ...USUARIO_DB, locked_until: BLOQUEADO_HASTA });
+
+    await expect(authService.changePassword('user-uuid-1', INPUT_VALIDO)).rejects.toMatchObject({ statusCode: 423 });
+  });
+
+  it('lanza error 401 si la contraseña actual es incorrecta', async () => {
+    bcrypt.compare.mockReset();
+    bcrypt.compare.mockResolvedValue(false); // contraseña incorrecta
+
+    await expect(authService.changePassword('user-uuid-1', INPUT_VALIDO)).rejects.toMatchObject({ statusCode: 401 });
+  });
+
+  it('incrementa intentos fallidos si la contraseña actual es incorrecta', async () => {
+    bcrypt.compare.mockReset();
+    bcrypt.compare.mockResolvedValue(false);
+    userRepository.incrementFailedAttempts.mockResolvedValue();
+
+    await expect(authService.changePassword('user-uuid-1', INPUT_VALIDO)).rejects.toThrow();
+    expect(userRepository.incrementFailedAttempts).toHaveBeenCalledWith('user-uuid-1', 3);
+  });
+
+  it('lanza error 400 si la nueva contraseña es igual a la actual', async () => {
+    bcrypt.compare.mockReset();
+    bcrypt.compare
+      .mockResolvedValueOnce(true)  // contraseña actual correcta
+      .mockResolvedValueOnce(true); // nueva contraseña == anterior
+
+    await expect(authService.changePassword('user-uuid-1', INPUT_VALIDO)).rejects.toMatchObject({ statusCode: 400 });
+    expect(userRepository.updatePasswordAndInvalidateResetToken).not.toHaveBeenCalled();
+  });
+});
