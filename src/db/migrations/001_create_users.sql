@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
   password_reset_token      UUID,
   password_reset_expires_at TIMESTAMPTZ,
   last_reset_request_at     TIMESTAMPTZ,
-  token_version             INT         NOT NULL DEFAULT 1
+  token_version             INT         NOT NULL DEFAULT 1,
+  role_                     VARCHAR(20) NOT NULL DEFAULT 'user'
 );
 
 -- Case-insensitive unique username (CA.3)
