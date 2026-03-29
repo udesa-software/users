@@ -26,8 +26,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx ON users (LOWER(usern
 -- Case-insensitive unique email (CA.7)
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_idx ON users (LOWER(email));
 
--- TABLA 2: User Preferences
-CREATE TABLE IF NOT EXISTS user_preferences (
+-- TABLA 2: User Preferences e info 
+CREATE TABLE IF NOT EXISTS preferences (
   id                        UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id                   UUID        NOT NULL UNIQUE,
   search_radius_km          INT         NOT NULL DEFAULT 25,
@@ -36,19 +36,8 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   location_update_frequency VARCHAR(50) NOT NULL DEFAULT 'weekly',
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  biography   TEXT,
   CONSTRAINT fk_user_preferences_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS user_preferences_user_id_idx ON user_preferences (user_id);
-
--- TABLA 3: User Profiles
-CREATE TABLE IF NOT EXISTS user_profiles (
-  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     UUID        NOT NULL UNIQUE,
-  biography   TEXT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT fk_user_profiles_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS user_profiles_user_id_idx ON user_profiles (user_id);
+CREATE INDEX IF NOT EXISTS preferences_user_id_idx ON preferences (user_id);
