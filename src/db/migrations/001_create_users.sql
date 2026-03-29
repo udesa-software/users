@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
   password_reset_token      UUID,
   password_reset_expires_at TIMESTAMPTZ,
   last_reset_request_at     TIMESTAMPTZ,
-  token_version             INT         NOT NULL DEFAULT 1
+  token_version             INT         NOT NULL DEFAULT 1,
+  role_                     VARCHAR(20) NOT NULL DEFAULT 'user'
 );
 
 -- Case-insensitive unique username (CA.3)
@@ -26,4 +27,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx ON users (LOWER(usern
 -- Case-insensitive unique email (CA.7)
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_idx ON users (LOWER(email));
 
+-- TABLA 2: User Preferences e info 
+CREATE TABLE IF NOT EXISTS preferences (
+  id                        UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id                   UUID        NOT NULL UNIQUE,
+  search_radius_km          INT         NOT NULL DEFAULT 25,
+  search_radius_min         INT         NOT NULL DEFAULT 1,
+  search_radius_max         INT         NOT NULL DEFAULT 50,
+  location_update_frequency VARCHAR(50) NOT NULL DEFAULT 'weekly',
+  created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  biography   TEXT,
+  CONSTRAINT fk_user_preferences_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 
+CREATE INDEX IF NOT EXISTS preferences_user_id_idx ON preferences (user_id);
