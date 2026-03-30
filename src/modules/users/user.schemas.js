@@ -26,11 +26,6 @@ const registerSchema = z.object({
 
 });
 
-const resendVerificationSchema = z.object({
-  email: z
-    .string({ required_error: 'El email es obligatorio' })
-    .email('El formato del email no es válido'),
-});
 
 // CA.3: solo pide contraseña como confirmación — el usuario se identifica por JWT
 const deleteSchema = z.object({
@@ -39,4 +34,4 @@ const deleteSchema = z.object({
     .min(1, 'La contraseña es obligatoria'),
 });
 
-module.exports = { registerSchema, resendVerificationSchema, deleteSchema };
+module.exports = { registerSchema, deleteSchema };

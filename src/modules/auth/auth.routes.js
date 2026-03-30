@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const { authController } = require('./auth.controller');
 const { validate } = require('../../middlewares/validate');
-const { loginSchema, forgotPasswordSchema, resetPasswordSchema, changePasswordSchema } = require('./auth.schemas');
+const { loginSchema, forgotPasswordSchema, resetPasswordSchema, changePasswordSchema, resendVerificationSchema } = require('./auth.schemas');
 const { authenticate } = require('../../middlewares/authenticate');
 
 const router = Router();
@@ -22,5 +22,8 @@ router.get('/reset-password', authController.verifyResetToken);
 router.post('/change-password', authenticate, validate(changePasswordSchema), authController.changePassword);
 // POST /api/auth/logout
 router.post('/logout', authenticate, authController.logout);
+
+// POST /api/auth/resend-verification
+router.post('/resend-verification', validate(resendVerificationSchema), authController.resendVerification);
 
 module.exports = router;

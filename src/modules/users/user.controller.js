@@ -28,14 +28,6 @@ const userController = {
     }
   },
 
-  async resendVerification(req, res, next) {
-    try {
-      await userService.resendVerification(req.body.email);
-      res.status(200).json({ message: 'Email de verificación reenviado.' });
-    } catch (err) {
-      next(err);
-    }
-  },
 
   async delete(req, res, next) {
     try {

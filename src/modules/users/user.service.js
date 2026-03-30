@@ -87,9 +87,10 @@ const userService = {
 
     await userRepository.updateVerifyToken(user.id, newToken, newExpiresAt);
 
-    sendVerificationEmail(email.toLowerCase(), newToken).catch((err) =>
-      console.error('Failed to resend verification email:', err)
-    );
+    console.log(`[AUTH] Resending verification to ${email}...`);
+    sendVerificationEmail(email.toLowerCase(), newToken)
+      .then(() => console.log(`[AUTH] Verification email sent to ${email}`))
+      .catch((err) => console.error(`[AUTH] Failed to resend verification email to ${email}:`, err));
   },
 
   // CA.3: userId viene del JWT (req.user.sub), password es solo la confirmación
