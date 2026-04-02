@@ -21,6 +21,9 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('7d'),
 
   ALLOWED_EMAIL_DOMAIN: z.string().optional(), // ej: "udesa.edu.ar"
+
+  INITIAL_SUPERADMIN_EMAIL: z.string().email().optional(),
+  INITIAL_SUPERADMIN_TEMP_PASSWORD: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
