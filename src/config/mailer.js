@@ -101,4 +101,28 @@ async function sendPasswordChangedEmail(toEmail) {
   });
 }
 
-module.exports = { sendVerificationEmail, sendResetPasswordEmail, sendPasswordChangedEmail };
+async function sendTempPasswordEmail(toEmail, tempPassword) {
+  if (!transporter) {
+    console.log('─────────────────────────────────────────────');
+    console.log('[DEV] Temp password email (not sent)');
+    console.log(`   To:       ${toEmail}`);
+    console.log(`   Password: ${tempPassword}`);
+    console.log('─────────────────────────────────────────────');
+    return;
+  }
+
+  await transporter.sendMail({
+    from: env.SMTP_FROM,
+    to: toEmail,
+    subject: 'Tu acceso al Backoffice de UdeSA-migos',
+    html: `
+      <h2>Bienvenido/a al panel de administración</h2>
+      <p>Se creó una cuenta de administrador para vos.</p>
+      <p>Tu contraseña temporal es: <strong>${tempPassword}</strong></p>
+      <p>Esta contraseña expira en <strong>24 horas</strong>. Al iniciar sesión serás redirigido/a para cambiarla.</p>
+      <p>Ingresá desde: <a href="${env.APP_URL}">${env.APP_URL}</a></p>
+    `,
+  });
+}
+
+module.exports = { sendVerificationEmail, sendResetPasswordEmail, sendPasswordChangedEmail, sendTempPasswordEmail };
