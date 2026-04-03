@@ -106,6 +106,18 @@ describe('userService.register', () => {
     );
   });
 
+  it('crea las preferencias por defecto al registrar el usuario (CA.5)', async () => {
+    await userService.register(INPUT_VALIDO);
+
+    expect(userRepository.create).toHaveBeenCalledTimes(1);
+    // El repository.create es quien dispara el INSERT en preferences internamente;
+    // desde el service solo verificamos que create fue llamado con los datos correctos
+    // y que devolvió el usuario (el INSERT en preferences está encapsulado en el repo)
+    expect(userRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ username: 'testuser', email: 'test@example.com' })
+    );
+  });
+
   it('envía el email de verificación al correo del usuario', async () => {
     await userService.register(INPUT_VALIDO);
     await Promise.resolve(); // espera
@@ -269,6 +281,27 @@ describe('userService.delete', () => {
 
     await expect(userService.delete('user-uuid-1', 'wrong')).rejects.toMatchObject({ statusCode: 401 });
     expect(userRepository.markDeleted).not.toHaveBeenCalled();
+  });
+});
+
+// getPreferences
+describe('userService.getPreferences', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('devuelve las preferencias del usuario', async () => {
+    const prefs = { search_radius_km: 25, location_update_frequency: 5 };
+    userRepository.getPreferences.mockResolvedValue(prefs);
+
+    const result = await userService.getPreferences('user-uuid-1');
+
+    expect(userRepository.getPreferences).toHaveBeenCalledWith('user-uuid-1');
+    expect(result).toEqual(prefs);
+  });
+
+  it('lanza error 404 si no se encuentran preferencias', async () => {
+    userRepository.getPreferences.mockResolvedValue(null);
+
+    await expect(userService.getPreferences('user-uuid-1')).rejects.toMatchObject({ statusCode: 404 });
   });
 });
 

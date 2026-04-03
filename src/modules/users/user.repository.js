@@ -50,7 +50,13 @@ const userRepository = {
        RETURNING id, username, email, is_verified, created_at, accepted_terms, accepted_terms_at`,
       [username, email, passwordHash, verifyToken, tokenExpiresAt, acceptedTerms, acceptedTermsAt]
     );
-    return result.rows[0];
+    const user = result.rows[0];
+    // CA.5: crear preferencias por defecto automáticamente al registrarse
+    await query(
+      `INSERT INTO preferences (user_id) VALUES ($1)`,
+      [user.id]
+    );
+    return user;
   },
 
   async updateVerifyToken(userId, token, expiresAt) {
