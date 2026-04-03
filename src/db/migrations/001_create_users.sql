@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS preferences (
   search_radius_km          INT         NOT NULL DEFAULT 25,
   search_radius_min         INT         NOT NULL DEFAULT 1,
   search_radius_max         INT         NOT NULL DEFAULT 50,
-  location_update_frequency VARCHAR(50) NOT NULL DEFAULT 'weekly',
+  location_update_frequency INT         NOT NULL DEFAULT 5, -- 5 | 15 | 30 -- deberiamos agregar un constraint aca no?
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   biography   TEXT,
