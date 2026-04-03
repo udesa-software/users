@@ -46,6 +46,27 @@ const userController = {
       next(err);
     }
   },
+
+  async getPreferences(req, res, next) {
+    try {
+      const prefs = await userService.getPreferences(req.user.sub);
+      res.status(200).json(prefs);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async updatePreferences(req, res, next) {
+    try {
+      const prefs = await userService.updatePreferences(req.user.sub, req.body);
+      res.status(200).json({
+        message: 'Preferencias actualizadas correctamente',
+        preferences: prefs,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
 };
 
 module.exports = { userController };

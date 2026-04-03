@@ -109,6 +109,39 @@ const userService = {
     await userRepository.markDeleted(userId);
   },
 
+  async getPreferences(userId) {
+    const prefs = await userRepository.getPreferences(userId);
+    if (!prefs) {
+      throw new AppError(404, 'Preferencias no encontradas');
+    }
+    return prefs;
+  },
+
+  async updatePreferences(userId, updateData) {
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new AppError(404, 'Usuario no encontrado');
+    }
+    
+    const updates = {};
+
+    if (updateData.search_radius_km !== undefined) {
+      const updatedPref = await userRepository.updateSearchRadius(userId, updateData.search_radius_km);
+      updates.search_radius_km = updatedPref.search_radius_km;
+    }
+
+    if (updateData.location_update_frequency !== undefined) {
+      const updatedPref = await userRepository.updateLocationFrequency(userId, updateData.location_update_frequency);
+      updates.location_update_frequency = updatedPref.location_update_frequency;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      throw new AppError(400, 'No se enviaron datos para actualizar');
+    }
+
+    return updates;
+  },
+
 };
 
 module.exports = { userService };

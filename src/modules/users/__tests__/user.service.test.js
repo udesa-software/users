@@ -19,6 +19,9 @@ jest.mock('../user.repository', () => ({
     markVerified: jest.fn(),
     updateVerifyToken: jest.fn(),
     markDeleted: jest.fn(),
+    updateSearchRadius: jest.fn(),
+    updateLocationFrequency: jest.fn(),
+    getPreferences: jest.fn(),
   },
 }));
 
@@ -266,5 +269,47 @@ describe('userService.delete', () => {
 
     await expect(userService.delete('user-uuid-1', 'wrong')).rejects.toMatchObject({ statusCode: 401 });
     expect(userRepository.markDeleted).not.toHaveBeenCalled();
+  });
+});
+
+// updatePreferences
+describe('userService.updatePreferences', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    userRepository.findById.mockResolvedValue(USUARIO_DB);
+    userRepository.updateSearchRadius.mockResolvedValue({ search_radius_km: 10 });
+    userRepository.updateLocationFrequency.mockResolvedValue({ location_update_frequency: 15 });
+  });
+
+  it('lanza error 404 si el usuario no existe', async () => {
+    userRepository.findById.mockResolvedValue(null);
+    await expect(userService.updatePreferences('user-uuid-1', { search_radius_km: 10 })).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('lanza error 400 si no se envian datos para actualizar', async () => {
+    await expect(userService.updatePreferences('user-uuid-1', {})).rejects.toMatchObject({ statusCode: 400 });
+    expect(userRepository.updateSearchRadius).not.toHaveBeenCalled();
+    expect(userRepository.updateLocationFrequency).not.toHaveBeenCalled();
+  });
+
+  it('actualiza unicamente el radio de busqueda cuando se pasa ese parametro', async () => {
+    const result = await userService.updatePreferences('user-uuid-1', { search_radius_km: 10 });
+    expect(userRepository.updateSearchRadius).toHaveBeenCalledWith('user-uuid-1', 10);
+    expect(userRepository.updateLocationFrequency).not.toHaveBeenCalled();
+    expect(result).toEqual({ search_radius_km: 10 });
+  });
+
+  it('actualiza unicamente la frecuencia cuando se pasa ese parametro', async () => {
+    const result = await userService.updatePreferences('user-uuid-1', { location_update_frequency: 15 });
+    expect(userRepository.updateLocationFrequency).toHaveBeenCalledWith('user-uuid-1', 15);
+    expect(userRepository.updateSearchRadius).not.toHaveBeenCalled();
+    expect(result).toEqual({ location_update_frequency: 15 });
+  });
+
+  it('actualiza ambos previniendo sobreescritura indeseada si ambos son enviados', async () => {
+    const result = await userService.updatePreferences('user-uuid-1', { search_radius_km: 10, location_update_frequency: 15 });
+    expect(userRepository.updateSearchRadius).toHaveBeenCalledWith('user-uuid-1', 10);
+    expect(userRepository.updateLocationFrequency).toHaveBeenCalledWith('user-uuid-1', 15);
+    expect(result).toEqual({ search_radius_km: 10, location_update_frequency: 15 });
   });
 });

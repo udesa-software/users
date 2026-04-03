@@ -39,4 +39,18 @@ const deleteSchema = z.object({
     .min(1, 'La contraseña es obligatoria'),
 });
 
-module.exports = { registerSchema, resendVerificationSchema, deleteSchema };
+const updatePreferencesSchema = z.object({
+  search_radius_km: z
+    .number({ invalid_type_error: 'El radio debe ser un número' })
+    .min(1, 'El radio de búsqueda no puede ser menor a 1 km')
+    .max(50, 'El radio de búsqueda no puede superar los 50 km')
+    .optional(),
+  location_update_frequency: z
+    .number({ invalid_type_error: 'La frecuencia debe ser un número' })
+    .refine((val) => [5, 15, 30].includes(val), {
+      message: 'La frecuencia de actualización solo puede ser 5, 15 o 30 minutos',
+    })
+    .optional(),
+});
+
+module.exports = { registerSchema, resendVerificationSchema, deleteSchema, updatePreferencesSchema };
