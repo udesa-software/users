@@ -50,7 +50,13 @@ const userRepository = {
        RETURNING id, username, email, is_verified, created_at, accepted_terms, accepted_terms_at`,
       [username, email, passwordHash, verifyToken, tokenExpiresAt, acceptedTerms, acceptedTermsAt]
     );
-    return result.rows[0];
+    const user = result.rows[0];
+    // CA.5: crear preferencias por defecto automáticamente al registrarse
+    await query(
+      `INSERT INTO preferences (user_id) VALUES ($1)`,
+      [user.id]
+    );
+    return user;
   },
 
   async updateVerifyToken(userId, token, expiresAt) {
@@ -137,6 +143,34 @@ const userRepository = {
     );
   },
 
+  async getPreferences(userId) {
+    const result = await query(
+      `SELECT search_radius_km, location_update_frequency FROM preferences WHERE user_id = $1`,
+      [userId]
+    );
+    return result.rows[0] ?? null;
+  },
+  async updateSearchRadius(userId, radius) {
+    const result = await query(
+      `UPDATE preferences 
+       SET search_radius_km = $1, updated_at = NOW()
+       WHERE user_id = $2
+       RETURNING search_radius_km`,
+      [radius, userId]
+    );
+    return result.rows[0];
+  },
+
+  async updateLocationFrequency(userId, frequency) {
+    const result = await query(
+      `UPDATE preferences 
+       SET location_update_frequency = $1, updated_at = NOW()
+       WHERE user_id = $2
+       RETURNING location_update_frequency`,
+      [frequency, userId]
+    );
+    return result.rows[0];
+  },
   // H6: actualiza el username en la tabla users (CA.5)
   async updateUsername(userId, username) {
     const result = await query(
