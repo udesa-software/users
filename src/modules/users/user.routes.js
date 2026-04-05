@@ -2,7 +2,7 @@ const { Router } = require('express');
 const { userController } = require('./user.controller');
 const { validate } = require('../../middlewares/validate');
 const { authenticate } = require('../../middlewares/authenticate');
-const { registerSchema, resendVerificationSchema, deleteSchema } = require('./user.schemas');
+const { registerSchema, resendVerificationSchema, deleteSchema, updateProfileSchema } = require('./user.schemas');
 
 const router = Router();
 
@@ -20,5 +20,8 @@ router.post(
 );
 // CA.3: requiere JWT (usuario logueado) + confirmación de contraseña en el body
 router.post('/delete', authenticate, validate(deleteSchema), userController.delete);
+
+
+router.patch('/profile', authenticate, validate(updateProfileSchema), userController.updateProfile);
 
 module.exports = router;

@@ -39,4 +39,25 @@ const deleteSchema = z.object({
     .min(1, 'La contraseña es obligatoria'),
 });
 
-module.exports = { registerSchema, resendVerificationSchema, deleteSchema };
+// H6: editar perfil — al menos un campo obligatorio, email no editable (CA.2)
+const updateProfileSchema = z
+  .object({
+    username: z
+      .string()
+      .min(4, 'El nombre de usuario debe tener al menos 4 caracteres')
+      .max(15, 'El nombre de usuario no puede superar 15 caracteres')
+      .regex(/^[a-zA-Z0-9]+$/, 'El nombre de usuario solo puede contener letras y números')
+      .trim()
+      .optional(),
+
+    biography: z
+      .string()
+      .max(150, 'La biografía no puede superar los 150 caracteres') // CA.1
+      .optional(),
+  })
+  .refine(
+    (data) => data.username !== undefined || data.biography !== undefined,
+    { message: 'Debés enviar al menos un campo para actualizar (username o biography)' }
+  );
+
+module.exports = { registerSchema, resendVerificationSchema, deleteSchema, updateProfileSchema };
