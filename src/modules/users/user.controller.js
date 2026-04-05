@@ -63,6 +63,10 @@ const userController = {
         message: 'Preferencias actualizadas correctamente',
         preferences: prefs,
       });
+    }catch (err) {
+      next(err);
+    }
+  },
   // H6: PATCH /api/users/profile
   async updateProfile(req, res, next) {
     try {

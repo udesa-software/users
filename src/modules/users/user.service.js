@@ -140,10 +140,9 @@ const userService = {
     }
 
     return updates;
-  // H6: editar perfil (CA.1 al CA.6)
-  
-    
-    async updateProfile(userId, { username, biography }) {
+  },
+
+  async updateProfile(userId, { username, biography }) {
     const user = await userRepository.findById(userId);
     if (!user) {
         throw new AppError(404, 'Usuario no encontrado');

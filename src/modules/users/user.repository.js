@@ -170,6 +170,7 @@ const userRepository = {
       [frequency, userId]
     );
     return result.rows[0];
+  },
   // H6: actualiza el username en la tabla users (CA.5)
   async updateUsername(userId, username) {
     const result = await query(
