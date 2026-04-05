@@ -2,7 +2,7 @@ const { Router } = require('express');
 const { userController } = require('./user.controller');
 const { validate } = require('../../middlewares/validate');
 const { authenticate } = require('../../middlewares/authenticate');
-const { registerSchema, resendVerificationSchema, deleteSchema, updatePreferencesSchema } = require('./user.schemas');
+const { registerSchema, resendVerificationSchema, deleteSchema, updatePreferencesSchema, updateProfileSchema} = require('./user.schemas');
 
 const router = Router();
 
@@ -29,5 +29,7 @@ router.patch(
   validate(updatePreferencesSchema),
   userController.updatePreferences
 );
+
+router.patch('/profile', authenticate, validate(updateProfileSchema), userController.updateProfile);
 
 module.exports = router;

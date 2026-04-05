@@ -170,6 +170,41 @@ const userRepository = {
       [frequency, userId]
     );
     return result.rows[0];
+  // H6: actualiza el username en la tabla users (CA.5)
+  async updateUsername(userId, username) {
+    const result = await query(
+      `UPDATE users SET username = LOWER($1), updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, username, email`,
+      [username, userId]
+    );
+    return result.rows[0] ?? null;
+  },
+
+  // H6: upsert de biography en la tabla preferences (CA.3)
+  // Si el usuario ya tiene preferences, actualiza; si no, crea el registro.
+  async updateBiography(userId, biography) {
+    const result = await query(
+      `INSERT INTO preferences (user_id, biography)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id)
+       DO UPDATE SET biography = EXCLUDED.biography, updated_at = NOW()
+       RETURNING biography`,
+      [userId, biography]
+    );
+    return result.rows[0] ?? null;
+  },
+
+  // H6: obtiene el perfil público del usuario (username + biography)
+  async findProfileById(userId) {
+    const result = await query(
+      `SELECT u.id, u.username, u.email, p.biography
+       FROM users u
+       LEFT JOIN preferences p ON p.user_id = u.id
+       WHERE u.id = $1`,
+      [userId]
+    );
+    return result.rows[0] ?? null;
   },
 };
 

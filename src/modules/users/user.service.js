@@ -140,6 +140,43 @@ const userService = {
     }
 
     return updates;
+  // H6: editar perfil (CA.1 al CA.6)
+  
+    
+    async updateProfile(userId, { username, biography }) {
+    const user = await userRepository.findById(userId);
+    if (!user) {
+        throw new AppError(404, 'Usuario no encontrado');
+      }
+
+    const updates = {};
+
+    if (username !== undefined) {
+      // CA.5: no puede quedar vacío ni ser solo espacios
+      const trimmed = username.trim();
+      if (trimmed.length === 0) {
+        throw new AppError(400, 'El nombre de usuario no puede estar vacío');
+      }
+
+      // Verificar que no esté tomado por otro usuario
+      const existing = await userRepository.findByUsername(trimmed);
+      if (existing && existing.id !== userId) {
+        throw new AppError(409, 'El nombre de usuario ya está en uso');
+      }
+
+      const updatedUser = await userRepository.updateUsername(userId, trimmed);
+      updates.username = updatedUser.username;
+    }
+
+    if (biography !== undefined) {
+      // CA.4: sanitizar HTML/scripts (eliminar tags)
+      const sanitized = biography.replace(/<[^>]*>/g, '').trim();
+
+      const updatedPref = await userRepository.updateBiography(userId, sanitized);
+      updates.biography = updatedPref.biography;
+    }
+
+    return updates; // CA.6: retorna los nuevos valores para actualizar el estado global
   },
 
 };

@@ -63,6 +63,12 @@ const userController = {
         message: 'Preferencias actualizadas correctamente',
         preferences: prefs,
       });
+  // H6: PATCH /api/users/profile
+  async updateProfile(req, res, next) {
+    try {
+      // req.user.sub viene del JWT — no hace falta que el cliente mande su propio ID
+      const updates = await userService.updateProfile(req.user.sub, req.body);
+      res.status(200).json(updates);
     } catch (err) {
       next(err);
     }

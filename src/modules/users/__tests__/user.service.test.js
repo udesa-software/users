@@ -15,6 +15,7 @@ jest.mock('../user.repository', () => ({
     findByUsername: jest.fn(),
     findByVerifyToken: jest.fn(),
     findById: jest.fn(),
+    findProfileById: jest.fn(),
     create: jest.fn(),
     markVerified: jest.fn(),
     updateVerifyToken: jest.fn(),
@@ -22,6 +23,8 @@ jest.mock('../user.repository', () => ({
     updateSearchRadius: jest.fn(),
     updateLocationFrequency: jest.fn(),
     getPreferences: jest.fn(),
+    updateUsername: jest.fn(),
+    updateBiography: jest.fn(),
   },
 }));
 
@@ -344,5 +347,135 @@ describe('userService.updatePreferences', () => {
     expect(userRepository.updateSearchRadius).toHaveBeenCalledWith('user-uuid-1', 10);
     expect(userRepository.updateLocationFrequency).toHaveBeenCalledWith('user-uuid-1', 15);
     expect(result).toEqual({ search_radius_km: 10, location_update_frequency: 15 });
+  });
+});
+describe('userService.updateProfile', () => {
+  const USER_ID = 'user-uuid-1';
+  const OTHER_USER_ID = 'user-uuid-2';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    userRepository.findById.mockResolvedValue(USUARIO_DB);
+    userRepository.findByUsername.mockResolvedValue(null); // username libre por defecto
+    userRepository.updateUsername.mockResolvedValue({ id: USER_ID, username: 'nuevousername', email: 'test@example.com' });
+    userRepository.updateBiography.mockResolvedValue({ biography: 'Mi nueva bio' });
+  });
+
+  // ─── usuario no existe ───
+  it('lanza 404 si el usuario no existe', async () => {
+    userRepository.findById.mockResolvedValue(null);
+
+    await expect(userService.updateProfile(USER_ID, { username: 'nuevo' }))
+      .rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('lanza AppError si el usuario no existe', async () => {
+    userRepository.findById.mockResolvedValue(null);
+
+    await expect(userService.updateProfile(USER_ID, { username: 'nuevo' }))
+      .rejects.toBeInstanceOf(AppError);
+  });
+
+  // ─── CA.5: username vacío / solo espacios ───
+  it('lanza 400 si el username es solo espacios en blanco (CA.5)', async () => {
+    await expect(userService.updateProfile(USER_ID, { username: '   ' }))
+      .rejects.toMatchObject({ statusCode: 400 });
+    expect(userRepository.updateUsername).not.toHaveBeenCalled();
+  });
+
+  // ─── username duplicado ───
+  it('lanza 409 si el username ya está en uso por otro usuario', async () => {
+    userRepository.findByUsername.mockResolvedValue({ ...USUARIO_DB, id: OTHER_USER_ID });
+
+    await expect(userService.updateProfile(USER_ID, { username: 'ocupado' }))
+      .rejects.toMatchObject({ statusCode: 409 });
+    expect(userRepository.updateUsername).not.toHaveBeenCalled();
+  });
+
+  it('no lanza si el username encontrado es del mismo usuario (no cambió el nombre)', async () => {
+    userRepository.findByUsername.mockResolvedValue({ ...USUARIO_DB, id: USER_ID });
+    userRepository.updateUsername.mockResolvedValue({ id: USER_ID, username: 'testuser', email: 'test@example.com' });
+
+    const result = await userService.updateProfile(USER_ID, { username: 'testuser' });
+    expect(result.username).toBe('testuser');
+    expect(userRepository.updateUsername).toHaveBeenCalledWith(USER_ID, 'testuser');
+  });
+
+  // ─── éxito: solo username ───
+  it('actualiza solo el username cuando solo se envía ese campo', async () => {
+    const result = await userService.updateProfile(USER_ID, { username: 'nuevousername' });
+
+    expect(result).toEqual({ username: 'nuevousername' });
+    expect(userRepository.updateUsername).toHaveBeenCalledWith(USER_ID, 'nuevousername');
+    expect(userRepository.updateBiography).not.toHaveBeenCalled();
+  });
+
+  // ─── éxito: solo biography ───
+  it('actualiza solo la biography cuando solo se envía ese campo', async () => {
+    const result = await userService.updateProfile(USER_ID, { biography: 'Mi nueva bio' });
+
+    expect(result).toEqual({ biography: 'Mi nueva bio' });
+    expect(userRepository.updateBiography).toHaveBeenCalled();
+    expect(userRepository.updateUsername).not.toHaveBeenCalled();
+  });
+
+  // ─── éxito: ambos campos ───
+  it('actualiza username y biography cuando se envían los dos', async () => {
+    const result = await userService.updateProfile(USER_ID, {
+      username: 'nuevousername',
+      biography: 'Mi nueva bio',
+    });
+
+    expect(result).toEqual({ username: 'nuevousername', biography: 'Mi nueva bio' });
+    expect(userRepository.updateUsername).toHaveBeenCalledWith(USER_ID, 'nuevousername');
+    expect(userRepository.updateBiography).toHaveBeenCalled();
+  });
+
+  // ─── CA.4: sanitización de HTML ───
+  it('elimina los tags HTML del biography antes de guardarlo — deja solo texto plano (CA.4)', async () => {
+    userRepository.updateBiography.mockResolvedValue({ biography: 'alert(1)Hola mundo' });
+
+    await userService.updateProfile(USER_ID, { biography: '<script>alert(1)</script>Hola mundo' });
+
+    // El regex quita los tags (<script>...</script>) pero deja el contenido interno como texto plano.
+    // "alert(1)" en texto llano no es ejecutable, el peligro de XSS viene de los tags.
+    expect(userRepository.updateBiography).toHaveBeenCalledWith(USER_ID, 'alert(1)Hola mundo');
+  });
+
+  it('elimina tags HTML mezclados con texto normal (CA.4)', async () => {
+    userRepository.updateBiography.mockResolvedValue({ biography: 'Soy  programador' });
+
+    await userService.updateProfile(USER_ID, { biography: 'Soy <b>un</b> programador' });
+
+    expect(userRepository.updateBiography).toHaveBeenCalledWith(USER_ID, 'Soy un programador');
+  });
+
+  // ─── CA.5: trim del username ───
+  it('hace trim del username antes de validar y guardar (CA.5)', async () => {
+    userRepository.updateUsername.mockResolvedValue({ id: USER_ID, username: 'trimmed', email: 'test@example.com' });
+
+    await userService.updateProfile(USER_ID, { username: '  trimmed  ' });
+
+    expect(userRepository.updateUsername).toHaveBeenCalledWith(USER_ID, 'trimmed');
+  });
+
+  // ─── CA.1: biography de exactamente 150 chars (límite exacto, pasa la validación Zod) ───
+  it('guarda la biography cuando tiene exactamente 150 caracteres (CA.1)', async () => {
+    const bio150 = 'a'.repeat(150);
+    userRepository.updateBiography.mockResolvedValue({ biography: bio150 });
+
+    const result = await userService.updateProfile(USER_ID, { biography: bio150 });
+
+    expect(result.biography).toBe(bio150);
+    expect(userRepository.updateBiography).toHaveBeenCalledWith(USER_ID, bio150);
+  });
+
+  // ─── biography que queda vacía tras sanitizar ───
+  it('guarda biography vacía si el string era solo tags HTML', async () => {
+    userRepository.updateBiography.mockResolvedValue({ biography: '' });
+
+    await userService.updateProfile(USER_ID, { biography: '<b></b>' });
+
+    expect(userRepository.updateBiography).toHaveBeenCalledWith(USER_ID, '');
   });
 });
