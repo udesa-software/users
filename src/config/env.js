@@ -24,6 +24,9 @@ const envSchema = z.object({
 
   INITIAL_SUPERADMIN_EMAIL: z.string().email().optional(),
   INITIAL_SUPERADMIN_TEMP_PASSWORD: z.string().optional(),
+  
+  MOBILE_DEEP_LINK_URL: z.string().optional(),
+  MOBILE_RESET_PASSWORD_URL: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
