@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { v4: uuidv4 } = require('uuid');
 const { adminAuthService } = require('../admin-auth.service');
 const { adminRepository } = require('../../admins/admin.repository');
 const { sendPasswordChangedEmail } = require('../../../config/mailer');
@@ -12,6 +13,10 @@ jest.mock('../../admins/admin.repository', () => ({
     resetFailedAttempts: jest.fn(),
     incrementTokenVersion: jest.fn(),
     updatePassword: jest.fn(),
+    createRefreshToken: jest.fn(),
+    rotateRefreshToken: jest.fn(),
+    deleteRefreshToken: jest.fn(),
+    deleteAllRefreshTokensForAdmin: jest.fn(),
   },
 }));
 
@@ -20,11 +25,12 @@ jest.mock('../../../config/mailer', () => ({
 }));
 
 jest.mock('../../../config/env', () => ({
-  env: { JWT_SECRET: 'test-secret', JWT_EXPIRES_IN: '8h' },
+  env: { JWT_SECRET: 'test-secret', ACCESS_TOKEN_EXPIRES_IN: '15m', REFRESH_TOKEN_EXPIRES_IN: '7d' },
 }));
 
 jest.mock('bcryptjs');
 jest.mock('jsonwebtoken');
+jest.mock('uuid');
 
 const ADMIN_DB = {
   id: 'admin-uuid-1',
@@ -40,37 +46,52 @@ const ADMIN_DB = {
 const BLOQUEADO_HASTA = new Date(Date.now() + 30 * 60 * 1000);
 
 // login
+
 describe('adminAuthService.login', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     adminRepository.findByEmail.mockResolvedValue(ADMIN_DB);
     bcrypt.compare.mockResolvedValue(true);
-    jwt.sign.mockReturnValue('jwt-token-mock');
+    jwt.sign.mockReturnValue('access-token-mock');
+    uuidv4.mockReturnValue('refresh-uuid-mock');
     adminRepository.resetFailedAttempts.mockResolvedValue();
     adminRepository.incrementFailedAttempts.mockResolvedValue();
+    adminRepository.createRefreshToken.mockResolvedValue();
   });
 
-  it('devuelve token y datos del admin cuando las credenciales son correctas', async () => {
+  it('devuelve accessToken, refreshToken y datos del admin cuando las credenciales son correctas', async () => {
     const result = await adminAuthService.login({ email: 'admin@udesa.edu.ar', password: 'Password1' });
 
-    expect(result.token).toBe('jwt-token-mock');
+    expect(result.accessToken).toBe('access-token-mock');
+    expect(result.refreshToken).toBe('refresh-uuid-mock');
     expect(result.admin).toMatchObject({ id: 'admin-uuid-1', role: 'superadmin' });
+  });
+
+  it('guarda el refresh token opaco en la BD', async () => {
+    await adminAuthService.login({ email: 'admin@udesa.edu.ar', password: 'Password1' });
+
+    expect(adminRepository.createRefreshToken).toHaveBeenCalledWith(
+      'admin-uuid-1',
+      'refresh-uuid-mock',
+      expect.any(Date)
+    );
+  });
+
+  it('genera el access token JWT con el rol incluido', async () => {
+    await adminAuthService.login({ email: 'admin@udesa.edu.ar', password: 'Password1' });
+
+    expect(jwt.sign).toHaveBeenCalledWith(
+      expect.objectContaining({ role: 'superadmin', must_change_password: false, type: 'access' }),
+      'test-secret',
+      { expiresIn: '15m' }
+    );
+    expect(jwt.sign).toHaveBeenCalledTimes(1);
   });
 
   it('normaliza el email a minúsculas antes de buscar', async () => {
     await adminAuthService.login({ email: 'ADMIN@UDESA.EDU.AR', password: 'Password1' });
 
     expect(adminRepository.findByEmail).toHaveBeenCalledWith('admin@udesa.edu.ar');
-  });
-
-  it('genera el JWT con el rol y must_change_password incluidos', async () => {
-    await adminAuthService.login({ email: 'admin@udesa.edu.ar', password: 'Password1' });
-
-    expect(jwt.sign).toHaveBeenCalledWith(
-      expect.objectContaining({ role: 'superadmin', must_change_password: false }),
-      'test-secret',
-      { expiresIn: '8h' }
-    );
   });
 
   it('resetea el contador de intentos fallidos al loguear exitosamente', async () => {
@@ -137,27 +158,95 @@ describe('adminAuthService.login', () => {
 });
 
 // logout
+
 describe('adminAuthService.logout', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('incrementa el token_version para revocar todas las sesiones', async () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    adminRepository.deleteRefreshToken.mockResolvedValue();
     adminRepository.incrementTokenVersion.mockResolvedValue();
+  });
 
-    await adminAuthService.logout('admin-uuid-1');
+  it('incrementa el token_version para invalidar el access token inmediatamente', async () => {
+    await adminAuthService.logout('admin-uuid-1', 'some-refresh-token');
 
     expect(adminRepository.incrementTokenVersion).toHaveBeenCalledWith('admin-uuid-1');
   });
 
-  it('devuelve un mensaje de confirmación', async () => {
-    adminRepository.incrementTokenVersion.mockResolvedValue();
+  it('borra el refresh token específico de la BD', async () => {
+    await adminAuthService.logout('admin-uuid-1', 'some-refresh-token');
 
-    const result = await adminAuthService.logout('admin-uuid-1');
+    expect(adminRepository.deleteRefreshToken).toHaveBeenCalledWith('some-refresh-token');
+  });
+
+  it('funciona sin refresh token (no falla si la cookie no estaba)', async () => {
+    await adminAuthService.logout('admin-uuid-1');
+
+    expect(adminRepository.deleteRefreshToken).not.toHaveBeenCalled();
+    expect(adminRepository.incrementTokenVersion).toHaveBeenCalledWith('admin-uuid-1');
+  });
+
+  it('devuelve un mensaje de confirmación', async () => {
+    const result = await adminAuthService.logout('admin-uuid-1', 'some-refresh-token');
 
     expect(result.message).toBeDefined();
   });
 });
 
+// refreshToken
+
+describe('adminAuthService.refreshToken', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    adminRepository.rotateRefreshToken.mockResolvedValue('admin-uuid-1');
+    adminRepository.findById.mockResolvedValue(ADMIN_DB);
+    uuidv4.mockReturnValue('new-refresh-uuid');
+    jwt.sign.mockReturnValue('new-access-token-mock');
+  });
+
+  it('devuelve nuevo accessToken y newRefreshToken cuando el token es válido', async () => {
+    const result = await adminAuthService.refreshToken('valid-uuid-token');
+
+    expect(result.accessToken).toBe('new-access-token-mock');
+    expect(result.newRefreshToken).toBe('new-refresh-uuid');
+  });
+
+  it('genera el access token JWT con el rol del admin', async () => {
+    await adminAuthService.refreshToken('valid-uuid-token');
+
+    expect(jwt.sign).toHaveBeenCalledWith(
+      expect.objectContaining({ sub: 'admin-uuid-1', role: 'superadmin', type: 'access' }),
+      'test-secret',
+      { expiresIn: '15m' }
+    );
+  });
+
+  it('delega la rotación atómica al repositorio con el token viejo y el nuevo', async () => {
+    await adminAuthService.refreshToken('old-uuid-token');
+
+    expect(adminRepository.rotateRefreshToken).toHaveBeenCalledWith(
+      'old-uuid-token',
+      'new-refresh-uuid',
+      expect.any(Date)
+    );
+  });
+
+  it('lanza error 401 si el token no existe, expiró o ya fue usado (race condition)', async () => {
+    adminRepository.rotateRefreshToken.mockResolvedValue(null);
+
+    await expect(adminAuthService.refreshToken('used-or-expired-token'))
+      .rejects.toMatchObject({ statusCode: 401 });
+  });
+
+  it('lanza error 401 si el admin no existe', async () => {
+    adminRepository.findById.mockResolvedValue(null);
+
+    await expect(adminAuthService.refreshToken('valid-uuid-token'))
+      .rejects.toMatchObject({ statusCode: 401 });
+  });
+});
+
 // changePassword
+
 describe('adminAuthService.changePassword', () => {
   const INPUT_VALIDO = { currentPassword: 'TempPass1', newPassword: 'NuevaPassword1' };
 
@@ -165,10 +254,11 @@ describe('adminAuthService.changePassword', () => {
     jest.clearAllMocks();
     adminRepository.findById.mockResolvedValue(ADMIN_DB);
     bcrypt.compare
-      .mockResolvedValueOnce(true)  // contraseña actual correcta
-      .mockResolvedValueOnce(false); // nueva contraseña ≠ anterior
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
     bcrypt.hash.mockResolvedValue('nuevo-hash');
     adminRepository.updatePassword.mockResolvedValue();
+    adminRepository.deleteAllRefreshTokensForAdmin.mockResolvedValue();
     sendPasswordChangedEmail.mockResolvedValue();
   });
 
@@ -177,6 +267,12 @@ describe('adminAuthService.changePassword', () => {
 
     expect(bcrypt.hash).toHaveBeenCalledWith('NuevaPassword1', 12);
     expect(adminRepository.updatePassword).toHaveBeenCalledWith('admin-uuid-1', 'nuevo-hash');
+  });
+
+  it('elimina todos los refresh tokens del admin al cambiar contraseña', async () => {
+    await adminAuthService.changePassword('admin-uuid-1', INPUT_VALIDO);
+
+    expect(adminRepository.deleteAllRefreshTokensForAdmin).toHaveBeenCalledWith('admin-uuid-1');
   });
 
   it('envía email de notificación al cambiar la contraseña', async () => {

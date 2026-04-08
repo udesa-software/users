@@ -1,3 +1,4 @@
+const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { adminRepository } = require('../admins/admin.repository');
@@ -7,6 +8,7 @@ const { env } = require('../../config/env');
 
 // H2 CA.3: 3 intentos fallidos → 30 minutos de bloqueo
 const LOGIN_MAX_ATTEMPTS = 3;
+const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 const adminAuthService = {
   // H2: Login de administrador
@@ -38,21 +40,28 @@ const adminAuthService = {
 
     await adminRepository.resetFailedAttempts(admin.id);
 
-    // H2 CA.1: JWT con rol incluido
-    const token = jwt.sign(
+    // H2 CA.1: access token JWT (corta duración)
+    const accessToken = jwt.sign(
       {
         sub: admin.id,
         email: admin.email,
         role: admin.role,
         token_version: admin.token_version,
         must_change_password: admin.must_change_password,
+        type: 'access',
       },
       env.JWT_SECRET,
-      { expiresIn: env.JWT_EXPIRES_IN }
+      { expiresIn: env.ACCESS_TOKEN_EXPIRES_IN }
     );
 
+    // Refresh token opaco (UUID) guardado en BD
+    const refreshToken = uuidv4();
+    const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+    await adminRepository.createRefreshToken(admin.id, refreshToken, refreshExpiresAt);
+
     return {
-      token,
+      accessToken,
+      refreshToken,
       admin: {
         id: admin.id,
         email: admin.email,
@@ -62,7 +71,42 @@ const adminAuthService = {
     };
   },
 
-  async logout(adminId) {
+  async refreshToken(currentRefreshToken) {
+    const newRefreshToken = uuidv4();
+    const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+
+    // Rotación atómica en transacción: invalida el token viejo y crea el nuevo en un solo paso.
+    const adminId = await adminRepository.rotateRefreshToken(currentRefreshToken, newRefreshToken, refreshExpiresAt);
+    if (!adminId) {
+      throw new AppError(401, 'Refresh token inválido o expirado');
+    }
+
+    const admin = await adminRepository.findById(adminId);
+    if (!admin) {
+      throw new AppError(401, 'Sesión revocada. Por favor, iniciá sesión de nuevo.');
+    }
+
+    const accessToken = jwt.sign(
+      {
+        sub: admin.id,
+        email: admin.email,
+        role: admin.role,
+        token_version: admin.token_version,
+        must_change_password: admin.must_change_password,
+        type: 'access',
+      },
+      env.JWT_SECRET,
+      { expiresIn: env.ACCESS_TOKEN_EXPIRES_IN }
+    );
+
+    return { accessToken, newRefreshToken };
+  },
+
+  async logout(adminId, refreshToken = null) {
+    if (refreshToken) {
+      await adminRepository.deleteRefreshToken(refreshToken);
+    }
+    // Invalida el access token actual inmediatamente
     await adminRepository.incrementTokenVersion(adminId);
     return { message: 'Sesión cerrada exitosamente.' };
   },
@@ -86,6 +130,7 @@ const adminAuthService = {
 
     const newPasswordHash = await bcrypt.hash(newPassword, 12);
     await adminRepository.updatePassword(adminId, newPasswordHash);
+    await adminRepository.deleteAllRefreshTokensForAdmin(adminId);
 
     sendPasswordChangedEmail(admin.email).catch((err) =>
       console.error('Failed to send password changed email:', err)

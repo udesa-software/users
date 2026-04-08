@@ -1,4 +1,5 @@
-const { query } = require('../../config/database');
+const { query, withTransaction } = require('../../config/database');
+const { hashToken } = require('../../utils/tokenHash');
 
 const adminRepository = {
   async findByEmail(email) {
@@ -68,6 +69,43 @@ const adminRepository = {
        WHERE id = $2`,
       [passwordHash, adminId]
     );
+  },
+
+  async createRefreshToken(adminId, token, expiresAt) {
+    await query(
+      `INSERT INTO admin_refresh_tokens (admin_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+      [adminId, hashToken(token), expiresAt]
+    );
+  },
+
+  async rotateRefreshToken(oldToken, newToken, expiresAt) {
+    const oldHash = hashToken(oldToken);
+    const newHash = hashToken(newToken);
+
+    return withTransaction(async (client) => {
+      const { rows } = await client.query(
+        `DELETE FROM admin_refresh_tokens WHERE token_hash = $1 AND expires_at > NOW() RETURNING admin_id`,
+        [oldHash]
+      );
+
+      if (rows.length === 0) return null;
+
+      const { admin_id } = rows[0];
+      await client.query(
+        `INSERT INTO admin_refresh_tokens (admin_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+        [admin_id, newHash, expiresAt]
+      );
+
+      return admin_id;
+    });
+  },
+
+  async deleteRefreshToken(token) {
+    await query(`DELETE FROM admin_refresh_tokens WHERE token_hash = $1`, [hashToken(token)]);
+  },
+
+  async deleteAllRefreshTokensForAdmin(adminId) {
+    await query(`DELETE FROM admin_refresh_tokens WHERE admin_id = $1`, [adminId]);
   },
 
   async updateTempPassword(adminId, passwordHash, expiresAt) {

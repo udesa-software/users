@@ -4,7 +4,6 @@ const { v4: uuidv4 } = require('uuid');
 const { authService } = require('../auth.service');
 const { userRepository } = require('../../users/user.repository');
 const { sendResetPasswordEmail, sendPasswordChangedEmail } = require('../../../config/mailer');
-const { AppError } = require('../../../middlewares/errorHandler');
 
 jest.mock('../../users/user.repository', () => ({
   userRepository: {
@@ -18,6 +17,10 @@ jest.mock('../../users/user.repository', () => ({
     updatePasswordResetToken: jest.fn(),
     updateLastResetRequest: jest.fn(),
     updatePasswordAndInvalidateResetToken: jest.fn(),
+    createRefreshToken: jest.fn(),
+    rotateRefreshToken: jest.fn(),
+    deleteRefreshToken: jest.fn(),
+    deleteAllRefreshTokensForUser: jest.fn(),
   },
 }));
 
@@ -26,16 +29,13 @@ jest.mock('../../../config/mailer', () => ({
   sendPasswordChangedEmail: jest.fn(),
 }));
 
-// env.js llama process.exit si no hay variables de entorno, lo mockeamos
 jest.mock('../../../config/env', () => ({
-  env: { JWT_SECRET: 'test-secret', JWT_EXPIRES_IN: '7d' },
+  env: { JWT_SECRET: 'test-secret', ACCESS_TOKEN_EXPIRES_IN: '15m', REFRESH_TOKEN_EXPIRES_IN: '7d' },
 }));
 
 jest.mock('bcryptjs');
 jest.mock('jsonwebtoken');
 jest.mock('uuid');
-
-// Datos de prueba
 
 const USUARIO_DB = {
   id: 'user-uuid-1',
@@ -51,10 +51,9 @@ const USUARIO_DB = {
   created_at: new Date('2024-01-01'),
 };
 
-// Fecha en el futuro para simular cuenta bloqueada
 const BLOQUEADO_HASTA = new Date(Date.now() + 15 * 60 * 1000);
 
-// login 
+// login
 
 describe('authService.login', () => {
   beforeEach(() => {
@@ -62,16 +61,40 @@ describe('authService.login', () => {
     userRepository.findByEmail.mockResolvedValue(USUARIO_DB);
     userRepository.findByUsername.mockResolvedValue(USUARIO_DB);
     bcrypt.compare.mockResolvedValue(true);
-    jwt.sign.mockReturnValue('jwt-token-mock');
+    jwt.sign.mockReturnValue('access-token-mock');
+    uuidv4.mockReturnValue('refresh-uuid-mock');
     userRepository.resetFailedAttempts.mockResolvedValue();
     userRepository.incrementFailedAttempts.mockResolvedValue();
+    userRepository.createRefreshToken.mockResolvedValue();
   });
 
-  it('devuelve token y datos del usuario cuando las credenciales son correctas', async () => {
+  it('devuelve accessToken, refreshToken y datos del usuario cuando las credenciales son correctas', async () => {
     const result = await authService.login({ identifier: 'test@example.com', password: 'Password1' });
 
-    expect(result.token).toBe('jwt-token-mock');
+    expect(result.accessToken).toBe('access-token-mock');
+    expect(result.refreshToken).toBe('refresh-uuid-mock');
     expect(result.user).toMatchObject({ id: 'user-uuid-1', username: 'testuser' });
+  });
+
+  it('guarda el refresh token opaco en la BD', async () => {
+    await authService.login({ identifier: 'test@example.com', password: 'Password1' });
+
+    expect(userRepository.createRefreshToken).toHaveBeenCalledWith(
+      'user-uuid-1',
+      'refresh-uuid-mock',
+      expect.any(Date)
+    );
+  });
+
+  it('genera el access token JWT con los datos del usuario', async () => {
+    await authService.login({ identifier: 'test@example.com', password: 'Password1' });
+
+    expect(jwt.sign).toHaveBeenCalledWith(
+      expect.objectContaining({ sub: 'user-uuid-1', username: 'testuser', token_version: 1, type: 'access' }),
+      'test-secret',
+      { expiresIn: '15m' }
+    );
+    expect(jwt.sign).toHaveBeenCalledTimes(1);
   });
 
   it('busca por email cuando el identifier contiene @', async () => {
@@ -86,16 +109,6 @@ describe('authService.login', () => {
 
     expect(userRepository.findByUsername).toHaveBeenCalledWith('testuser');
     expect(userRepository.findByEmail).not.toHaveBeenCalled();
-  });
-
-  it('genera el JWT con los datos del usuario', async () => {
-    await authService.login({ identifier: 'test@example.com', password: 'Password1' });
-
-    expect(jwt.sign).toHaveBeenCalledWith(
-      expect.objectContaining({ sub: 'user-uuid-1', username: 'testuser', token_version: 1 }),
-      'test-secret',
-      { expiresIn: '7d' }
-    );
   });
 
   it('resetea el contador de intentos fallidos al loguear correctamente', async () => {
@@ -160,29 +173,42 @@ describe('authService.login', () => {
   });
 });
 
-// logout 
+// logout
 
 describe('authService.logout', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('incrementa el token_version para revocar todas las sesiones activas', async () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    userRepository.deleteRefreshToken.mockResolvedValue();
     userRepository.incrementTokenVersion.mockResolvedValue();
+  });
 
-    await authService.logout('user-uuid-1');
+  it('incrementa el token_version para invalidar el access token inmediatamente', async () => {
+    await authService.logout('user-uuid-1', 'some-refresh-token');
 
     expect(userRepository.incrementTokenVersion).toHaveBeenCalledWith('user-uuid-1');
   });
 
-  it('devuelve un mensaje de confirmación', async () => {
-    userRepository.incrementTokenVersion.mockResolvedValue();
+  it('borra el refresh token específico de la BD', async () => {
+    await authService.logout('user-uuid-1', 'some-refresh-token');
 
-    const result = await authService.logout('user-uuid-1');
+    expect(userRepository.deleteRefreshToken).toHaveBeenCalledWith('some-refresh-token');
+  });
+
+  it('funciona sin refresh token (no falla si la cookie no estaba)', async () => {
+    await authService.logout('user-uuid-1');
+
+    expect(userRepository.deleteRefreshToken).not.toHaveBeenCalled();
+    expect(userRepository.incrementTokenVersion).toHaveBeenCalledWith('user-uuid-1');
+  });
+
+  it('devuelve un mensaje de confirmación', async () => {
+    const result = await authService.logout('user-uuid-1', 'some-refresh-token');
 
     expect(result.message).toBeDefined();
   });
 });
 
-// requestPasswordReset 
+// requestPasswordReset
 
 describe('authService.requestPasswordReset', () => {
   beforeEach(() => {
@@ -213,7 +239,7 @@ describe('authService.requestPasswordReset', () => {
   });
 
   it('devuelve mensaje genérico si el usuario está en throttle (menos de 1 min)', async () => {
-    const hacePocoTiempo = new Date(Date.now() - 30 * 1000); // hace 30 segundos
+    const hacePocoTiempo = new Date(Date.now() - 30 * 1000);
     userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, last_reset_request_at: hacePocoTiempo });
 
     const result = await authService.requestPasswordReset('test@example.com');
@@ -247,7 +273,7 @@ describe('authService.requestPasswordReset', () => {
     userRepository.findByEmail.mockResolvedValue(USUARIO_DB);
 
     await authService.requestPasswordReset('test@example.com');
-    await Promise.resolve(); // espera 
+    await Promise.resolve();
 
     expect(sendResetPasswordEmail).toHaveBeenCalledWith('test@example.com', 'reset-token-uuid');
   });
@@ -271,7 +297,7 @@ describe('authService.requestPasswordReset', () => {
   });
 });
 
-// verifyResetToken 
+// verifyResetToken
 
 describe('authService.verifyResetToken', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -297,7 +323,7 @@ describe('authService.verifyResetToken', () => {
   });
 });
 
-// resetPassword 
+// resetPassword
 
 describe('authService.resetPassword', () => {
   const INPUT_VALIDO = {
@@ -309,19 +335,23 @@ describe('authService.resetPassword', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     userRepository.findByPasswordResetToken.mockResolvedValue(USUARIO_DB);
-    bcrypt.compare.mockResolvedValue(false); // nueva contraseña ≠ anterior por defecto
+    bcrypt.compare.mockResolvedValue(false);
     bcrypt.hash.mockResolvedValue('nuevo-hash');
     userRepository.updatePasswordAndInvalidateResetToken.mockResolvedValue();
+    userRepository.deleteAllRefreshTokensForUser.mockResolvedValue();
   });
 
-  it('actualiza la contraseña y invalida el token cuando todo es válido', async () => {
+  it('actualiza la contraseña e invalida el token cuando todo es válido', async () => {
     await authService.resetPassword(INPUT_VALIDO);
 
     expect(bcrypt.hash).toHaveBeenCalledWith('NuevaPassword1', 12);
-    expect(userRepository.updatePasswordAndInvalidateResetToken).toHaveBeenCalledWith(
-      'user-uuid-1',
-      'nuevo-hash'
-    );
+    expect(userRepository.updatePasswordAndInvalidateResetToken).toHaveBeenCalledWith('user-uuid-1', 'nuevo-hash');
+  });
+
+  it('revoca todas las sesiones activas al resetear la contraseña (H5 CA.7)', async () => {
+    await authService.resetPassword(INPUT_VALIDO);
+
+    expect(userRepository.deleteAllRefreshTokensForUser).toHaveBeenCalledWith('user-uuid-1');
   });
 
   it('devuelve un mensaje de éxito', async () => {
@@ -345,14 +375,82 @@ describe('authService.resetPassword', () => {
   });
 
   it('lanza error 400 si la nueva contraseña es igual a la anterior', async () => {
-    bcrypt.compare.mockResolvedValue(true); // misma contraseña
+    bcrypt.compare.mockResolvedValue(true);
 
     await expect(authService.resetPassword(INPUT_VALIDO)).rejects.toMatchObject({ statusCode: 400 });
     expect(userRepository.updatePasswordAndInvalidateResetToken).not.toHaveBeenCalled();
   });
 });
 
-// changePassword 
+// refreshToken
+
+describe('authService.refreshToken', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    userRepository.rotateRefreshToken.mockResolvedValue('user-uuid-1');
+    userRepository.findById.mockResolvedValue(USUARIO_DB);
+    uuidv4.mockReturnValue('new-refresh-uuid');
+    jwt.sign.mockReturnValue('new-access-token-mock');
+  });
+
+  it('devuelve nuevo accessToken y newRefreshToken cuando el token es válido', async () => {
+    const result = await authService.refreshToken('valid-uuid-token');
+
+    expect(result.accessToken).toBe('new-access-token-mock');
+    expect(result.newRefreshToken).toBe('new-refresh-uuid');
+  });
+
+  it('genera el access token JWT con los datos del usuario', async () => {
+    await authService.refreshToken('valid-uuid-token');
+
+    expect(jwt.sign).toHaveBeenCalledWith(
+      expect.objectContaining({ sub: 'user-uuid-1', type: 'access' }),
+      'test-secret',
+      { expiresIn: '15m' }
+    );
+  });
+
+  it('delega la rotación atómica al repositorio con el token viejo y el nuevo', async () => {
+    await authService.refreshToken('old-uuid-token');
+
+    expect(userRepository.rotateRefreshToken).toHaveBeenCalledWith(
+      'old-uuid-token',
+      'new-refresh-uuid',
+      expect.any(Date)
+    );
+  });
+
+  it('lanza error 401 si el token no existe, expiró o ya fue usado (race condition)', async () => {
+    userRepository.rotateRefreshToken.mockResolvedValue(null);
+
+    await expect(authService.refreshToken('used-or-expired-token'))
+      .rejects.toMatchObject({ statusCode: 401 });
+  });
+
+  it('lanza error 401 si el usuario no existe', async () => {
+    userRepository.findById.mockResolvedValue(null);
+
+    await expect(authService.refreshToken('valid-uuid-token'))
+      .rejects.toMatchObject({ statusCode: 401 });
+  });
+
+  it('lanza error 403 si la cuenta fue eliminada (soft-delete)', async () => {
+    userRepository.findById.mockResolvedValue({ ...USUARIO_DB, deleted_at: new Date() });
+
+    await expect(authService.refreshToken('valid-uuid-token'))
+      .rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it('lanza error 403 si la cuenta está suspendida', async () => {
+    userRepository.findById.mockResolvedValue({ ...USUARIO_DB, is_suspended: true });
+
+    await expect(authService.refreshToken('valid-uuid-token'))
+      .rejects.toMatchObject({ statusCode: 403 });
+  });
+});
+
+// changePassword
+
 describe('authService.changePassword', () => {
   const INPUT_VALIDO = { currentPassword: 'Password1', newPassword: 'NuevaPassword1' };
 
@@ -360,10 +458,11 @@ describe('authService.changePassword', () => {
     jest.clearAllMocks();
     userRepository.findById.mockResolvedValue(USUARIO_DB);
     bcrypt.compare
-      .mockResolvedValueOnce(true)  // primera llamada: contraseña actual correcta
-      .mockResolvedValueOnce(false); // segunda llamada: nueva contraseña ≠ anterior
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
     bcrypt.hash.mockResolvedValue('nuevo-hash');
     userRepository.updatePasswordAndInvalidateResetToken.mockResolvedValue();
+    userRepository.deleteAllRefreshTokensForUser.mockResolvedValue();
     userRepository.resetFailedAttempts.mockResolvedValue();
     sendPasswordChangedEmail.mockResolvedValue();
   });
@@ -371,10 +470,13 @@ describe('authService.changePassword', () => {
   it('actualiza la contraseña e invalida todas las sesiones activas', async () => {
     await authService.changePassword('user-uuid-1', INPUT_VALIDO);
 
-    expect(userRepository.updatePasswordAndInvalidateResetToken).toHaveBeenCalledWith(
-      'user-uuid-1',
-      'nuevo-hash'
-    );
+    expect(userRepository.updatePasswordAndInvalidateResetToken).toHaveBeenCalledWith('user-uuid-1', 'nuevo-hash');
+  });
+
+  it('elimina todos los refresh tokens del usuario al cambiar contraseña', async () => {
+    await authService.changePassword('user-uuid-1', INPUT_VALIDO);
+
+    expect(userRepository.deleteAllRefreshTokensForUser).toHaveBeenCalledWith('user-uuid-1');
   });
 
   it('resetea el contador de intentos fallidos al cambiar exitosamente', async () => {
@@ -416,7 +518,7 @@ describe('authService.changePassword', () => {
 
   it('lanza error 401 si la contraseña actual es incorrecta', async () => {
     bcrypt.compare.mockReset();
-    bcrypt.compare.mockResolvedValue(false); // contraseña incorrecta
+    bcrypt.compare.mockResolvedValue(false);
 
     await expect(authService.changePassword('user-uuid-1', INPUT_VALIDO)).rejects.toMatchObject({ statusCode: 401 });
   });
@@ -433,8 +535,8 @@ describe('authService.changePassword', () => {
   it('lanza error 400 si la nueva contraseña es igual a la actual', async () => {
     bcrypt.compare.mockReset();
     bcrypt.compare
-      .mockResolvedValueOnce(true)  // contraseña actual correcta
-      .mockResolvedValueOnce(true); // nueva contraseña == anterior
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(true);
 
     await expect(authService.changePassword('user-uuid-1', INPUT_VALIDO)).rejects.toMatchObject({ statusCode: 400 });
     expect(userRepository.updatePasswordAndInvalidateResetToken).not.toHaveBeenCalled();
