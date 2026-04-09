@@ -1,5 +1,9 @@
 const { z } = require('zod');
 
+const SEARCH_RADIUS_MIN = 1;
+const SEARCH_RADIUS_MAX = 50;
+const ALLOWED_UPDATE_FREQUENCIES = [5, 15, 30];
+
 // CA.2: valid email format
 // CA.3: username 4-15 chars, alphanumeric only, unique (uniqueness checked in service)
 // CA.4: password min 8 chars, 1 uppercase, 1 number
@@ -23,7 +27,6 @@ const registerSchema = z.object({
 
   acceptedTerms: z
     .boolean({ required_error: 'Leer y aceptar los Términos y Condiciones y la Política de Privacidad es obligatorio' }),
-
 });
 
 const resendVerificationSchema = z.object({
@@ -39,21 +42,21 @@ const deleteSchema = z.object({
     .min(1, 'La contraseña es obligatoria'),
 });
 
+// CA.1: radio 1-50 km, CA.4: frecuencia solo 5, 15 o 30
 const updatePreferencesSchema = z.object({
   search_radius_km: z
     .number({ invalid_type_error: 'El radio debe ser un número' })
-    .min(1, 'El radio de búsqueda no puede ser menor a 1 km')
-    .max(50, 'El radio de búsqueda no puede superar los 50 km')
+    .min(SEARCH_RADIUS_MIN, `El radio de búsqueda no puede ser menor a ${SEARCH_RADIUS_MIN} km`)
+    .max(SEARCH_RADIUS_MAX, `El radio de búsqueda no puede superar los ${SEARCH_RADIUS_MAX} km`)
     .optional(),
   location_update_frequency: z
     .number({ invalid_type_error: 'La frecuencia debe ser un número' })
-    .refine((val) => [5, 15, 30].includes(val), {
-      message: 'La frecuencia de actualización solo puede ser 5, 15 o 30 minutos',
+    .refine((val) => ALLOWED_UPDATE_FREQUENCIES.includes(val), {
+      message: `La frecuencia de actualización solo puede ser ${ALLOWED_UPDATE_FREQUENCIES.join(', ')} minutos`,
     })
     .optional(),
 });
 
-module.exports = { registerSchema, resendVerificationSchema, deleteSchema, updatePreferencesSchema };
 // H6: editar perfil — al menos un campo obligatorio, email no editable (CA.2)
 const updateProfileSchema = z
   .object({
@@ -75,4 +78,10 @@ const updateProfileSchema = z
     { message: 'Debés enviar al menos un campo para actualizar (username o biography)' }
   );
 
-module.exports = { registerSchema, resendVerificationSchema, deleteSchema, updateProfileSchema };
+module.exports = {
+  registerSchema,
+  resendVerificationSchema,
+  deleteSchema,
+  updatePreferencesSchema,
+  updateProfileSchema,
+};

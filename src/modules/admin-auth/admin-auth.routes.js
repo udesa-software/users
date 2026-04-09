@@ -9,6 +9,9 @@ const router = Router();
 // POST /api/admin/auth/login — H2
 router.post('/login', validate(loginSchema), adminAuthController.login);
 
+// POST /api/admin/auth/refresh — get new access token using refresh token cookie
+router.post('/refresh', adminAuthController.refresh);
+
 // POST /api/admin/auth/logout
 router.post('/logout', authenticateAdmin, adminAuthController.logout);
 
