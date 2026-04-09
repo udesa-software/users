@@ -33,6 +33,10 @@ jest.mock('../../../config/env', () => ({
   env: { JWT_SECRET: 'test-secret', ACCESS_TOKEN_EXPIRES_IN: '15m', REFRESH_TOKEN_EXPIRES_IN: '7d' },
 }));
 
+jest.mock('../../../config/redis', () => ({
+  redisClient: { set: jest.fn().mockResolvedValue('OK') },
+}));
+
 jest.mock('bcryptjs');
 jest.mock('jsonwebtoken');
 jest.mock('uuid');
@@ -179,7 +183,7 @@ describe('authService.logout', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     userRepository.deleteRefreshToken.mockResolvedValue();
-    userRepository.incrementTokenVersion.mockResolvedValue();
+    userRepository.incrementTokenVersion.mockResolvedValue({ token_version: 2 });
   });
 
   it('incrementa el token_version para invalidar el access token inmediatamente', async () => {
@@ -337,7 +341,7 @@ describe('authService.resetPassword', () => {
     userRepository.findByPasswordResetToken.mockResolvedValue(USUARIO_DB);
     bcrypt.compare.mockResolvedValue(false);
     bcrypt.hash.mockResolvedValue('nuevo-hash');
-    userRepository.updatePasswordAndInvalidateResetToken.mockResolvedValue();
+    userRepository.updatePasswordAndInvalidateResetToken.mockResolvedValue({ token_version: 2 });
     userRepository.deleteAllRefreshTokensForUser.mockResolvedValue();
   });
 
@@ -461,7 +465,7 @@ describe('authService.changePassword', () => {
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(false);
     bcrypt.hash.mockResolvedValue('nuevo-hash');
-    userRepository.updatePasswordAndInvalidateResetToken.mockResolvedValue();
+    userRepository.updatePasswordAndInvalidateResetToken.mockResolvedValue({ token_version: 2 });
     userRepository.deleteAllRefreshTokensForUser.mockResolvedValue();
     userRepository.resetFailedAttempts.mockResolvedValue();
     sendPasswordChangedEmail.mockResolvedValue();

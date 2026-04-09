@@ -94,20 +94,23 @@ const userRepository = {
   },
 
   async updatePasswordAndInvalidateResetToken(userId, passwordHash) {
-    await query(
+    const result = await query(
       `UPDATE users
        SET password_hash = $1, password_reset_token = NULL, password_reset_expires_at = NULL,
            token_version = token_version + 1, updated_at = NOW()
-       WHERE id = $2`,
+       WHERE id = $2
+       RETURNING token_version`,
       [passwordHash, userId]
     );
+    return result.rows[0];
   },
 
   async incrementTokenVersion(userId) {
-    await query(
-      `UPDATE users SET token_version = token_version + 1, updated_at = NOW() WHERE id = $1`,
+    const result = await query(
+      `UPDATE users SET token_version = token_version + 1, updated_at = NOW() WHERE id = $1 RETURNING token_version`,
       [userId]
     );
+    return result.rows[0];
   },
 
   async markDeleted(userId) {
