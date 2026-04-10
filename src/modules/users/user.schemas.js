@@ -26,11 +26,6 @@ const registerSchema = z.object({
 
 });
 
-const resendVerificationSchema = z.object({
-  email: z
-    .string({ required_error: 'El email es obligatorio' })
-    .email('El formato del email no es válido'),
-});
 
 // CA.3: solo pide contraseña como confirmación — el usuario se identifica por JWT
 const deleteSchema = z.object({
@@ -53,7 +48,7 @@ const updatePreferencesSchema = z.object({
     .optional(),
 });
 
-module.exports = { registerSchema, resendVerificationSchema, deleteSchema, updatePreferencesSchema };
+module.exports = { registerSchema, deleteSchema, updatePreferencesSchema };
 // H6: editar perfil — al menos un campo obligatorio, email no editable (CA.2)
 const updateProfileSchema = z
   .object({
@@ -75,4 +70,4 @@ const updateProfileSchema = z
     { message: 'Debés enviar al menos un campo para actualizar (username o biography)' }
   );
 
-module.exports = { registerSchema, resendVerificationSchema, deleteSchema, updateProfileSchema };
+module.exports = { registerSchema, deleteSchema, updateProfileSchema };

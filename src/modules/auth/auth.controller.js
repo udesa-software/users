@@ -209,6 +209,25 @@ const authController = {
       next(err);
     }
   },
+
+  async verifyEmail(req, res, next) {
+    try {
+      const token = req.query['token'];
+      await authService.verifyEmail(token);
+      res.status(200).json({ message: 'Cuenta verificada exitosamente. Ya podés iniciar sesión.' });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async resendVerification(req, res, next) {
+    try {
+      await authService.resendVerification(req.body.email);
+      res.status(200).json({ message: 'Email de verificación reenviado.' });
+    } catch (err) {
+      next(err);
+    }
+  },
 };
 
 module.exports = { authController };
