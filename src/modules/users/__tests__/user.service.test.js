@@ -28,7 +28,9 @@ jest.mock('../user.repository', () => ({
   },
 }));
 
-jest.mock('../../../config/mailer', () => ({}));
+jest.mock('../../../config/mailer', () => ({
+  sendVerificationEmail: jest.fn(),
+}));
 
 jest.mock('bcryptjs');
 jest.mock('uuid');

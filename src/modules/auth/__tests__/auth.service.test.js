@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { authService } = require('../auth.service');
 const { userRepository } = require('../../users/user.repository');
-const { sendResetPasswordEmail, sendPasswordChangedEmail } = require('../../../config/mailer');
+const { sendResetPasswordEmail, sendPasswordChangedEmail, sendVerificationEmail } = require('../../../config/mailer');
 const { AppError } = require('../../../middlewares/errorHandler');
 
 jest.mock('../../users/user.repository', () => ({
