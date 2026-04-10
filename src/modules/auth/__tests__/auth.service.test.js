@@ -18,12 +18,16 @@ jest.mock('../../users/user.repository', () => ({
     updatePasswordResetToken: jest.fn(),
     updateLastResetRequest: jest.fn(),
     updatePasswordAndInvalidateResetToken: jest.fn(),
+    findByVerifyToken: jest.fn(),
+    markVerified: jest.fn(),
+    updateVerifyToken: jest.fn(),
   },
 }));
 
 jest.mock('../../../config/mailer', () => ({
   sendResetPasswordEmail: jest.fn(),
   sendPasswordChangedEmail: jest.fn(),
+  sendVerificationEmail: jest.fn(),
 }));
 
 // env.js llama process.exit si no hay variables de entorno, lo mockeamos
@@ -438,5 +442,94 @@ describe('authService.changePassword', () => {
 
     await expect(authService.changePassword('user-uuid-1', INPUT_VALIDO)).rejects.toMatchObject({ statusCode: 400 });
     expect(userRepository.updatePasswordAndInvalidateResetToken).not.toHaveBeenCalled();
+  });
+});
+
+// verifyEmail 
+
+describe('authService.verifyEmail', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('marca la cuenta como verificada cuando el token es válido', async () => {
+    userRepository.findByVerifyToken.mockResolvedValue(USUARIO_DB);
+    userRepository.markVerified.mockResolvedValue();
+
+    await authService.verifyEmail('token-valido');
+
+    expect(userRepository.markVerified).toHaveBeenCalledWith('user-uuid-1');
+  });
+
+  it('lanza error 400 si el token no existe o ya expiró', async () => {
+    userRepository.findByVerifyToken.mockResolvedValue(null);
+
+    await expect(authService.verifyEmail('token-vencido')).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('no llama a markVerified si el token es inválido', async () => {
+    userRepository.findByVerifyToken.mockResolvedValue(null);
+
+    await expect(authService.verifyEmail('token-malo')).rejects.toThrow();
+    expect(userRepository.markVerified).not.toHaveBeenCalled();
+  });
+});
+
+// resendVerification 
+
+describe('authService.resendVerification', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    uuidv4.mockReturnValue('nuevo-token');
+    userRepository.updateVerifyToken.mockResolvedValue();
+    sendVerificationEmail.mockResolvedValue();
+  });
+
+  it('genera un nuevo token y actualiza el registro del usuario', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: false });
+
+    await authService.resendVerification('test@example.com');
+
+    expect(userRepository.updateVerifyToken).toHaveBeenCalledWith(
+      'user-uuid-1',
+      'nuevo-token',
+      expect.any(Date)
+    );
+  });
+
+  it('normaliza el email a minúsculas antes de buscar', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: false });
+
+    await authService.resendVerification('USER@EXAMPLE.COM');
+
+    expect(userRepository.findByEmail).toHaveBeenCalledWith('test@example.com'); // USUARIO_DB.email es test@example.com
+  });
+
+  it('envía el email con el nuevo token', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: false });
+
+    await authService.resendVerification('test@example.com');
+    await Promise.resolve(); // espera el fire-and-forget
+
+    expect(sendVerificationEmail).toHaveBeenCalledWith('test@example.com', 'nuevo-token');
+  });
+
+  it('no falla si el envío del email falla', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: false });
+    sendVerificationEmail.mockRejectedValue(new Error('SMTP caído'));
+
+    await expect(authService.resendVerification('test@example.com')).resolves.toBeUndefined();
+  });
+
+  it('lanza error 404 si el email no está registrado', async () => {
+    userRepository.findByEmail.mockResolvedValue(null);
+
+    await expect(authService.resendVerification('noexiste@x.com')).rejects.toMatchObject({ statusCode: 404 });
+    expect(userRepository.updateVerifyToken).not.toHaveBeenCalled();
+  });
+
+  it('lanza error 400 si la cuenta ya está verificada', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: true });
+
+    await expect(authService.resendVerification('test@example.com')).rejects.toMatchObject({ statusCode: 400 });
+    expect(userRepository.updateVerifyToken).not.toHaveBeenCalled();
   });
 });
