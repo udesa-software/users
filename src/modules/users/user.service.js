@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { userRepository } = require('./user.repository');
 const { sendVerificationEmail } = require('../../config/mailer');
 const { AppError } = require('../../middlewares/errorHandler');
+const { friendsClient } = require('../../clients/friendsClient');
 
 const TOKEN_EXPIRY_HOURS = 24;
 
@@ -107,6 +108,11 @@ const userService = {
 
     // CA.1: soft-delete — no borra la fila, solo marca deleted_at
     await userRepository.markDeleted(userId);
+
+    // CA.2/CA.4: eliminar todas las relaciones de amistad en el servicio friends
+    if (process.env.FRIENDS_SERVICE_URL) {
+      await friendsClient.deleteUserRelationships(userId);
+    }
   },
 
   async getPreferences(userId) {
