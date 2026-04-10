@@ -500,7 +500,7 @@ describe('authService.resendVerification', () => {
 
     await authService.resendVerification('USER@EXAMPLE.COM');
 
-    expect(userRepository.findByEmail).toHaveBeenCalledWith('test@example.com'); // USUARIO_DB.email es test@example.com
+    expect(userRepository.findByEmail).toHaveBeenCalledWith('user@example.com');
   });
 
   it('envía el email con el nuevo token', async () => {
