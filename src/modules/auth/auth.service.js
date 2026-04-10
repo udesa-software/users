@@ -13,6 +13,7 @@ function tokenExpiresAt() {
   date.setHours(date.getHours() + TOKEN_EXPIRY_HOURS);
   return date;
 }
+const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 const authService = {
   async login({ identifier, password }) {
@@ -36,8 +37,7 @@ const authService = {
 
     // CA.2: cuenta bloqueada por demasiados intentos fallidos
     if (user.locked_until && new Date(user.locked_until) > new Date()) {
-      //throw new AppError(423, `Cuenta bloqueada temporalmente. Intentá de nuevo en ${Math.ceil(((user.locked_until - new Date()) / 60000))} minutos.`); 
-      throw new AppError(423, `Cuenta bloqueada temporalmente. Intentá de nuevo en ${Math.ceil((user.locked_until - new Date()) / 60000)} minutos.`); 
+      throw new AppError(423, `Cuenta bloqueada temporalmente. Intentá de nuevo en ${Math.ceil((user.locked_until - new Date()) / 60000)} minutos.`);
     }
 
     // CA.4: email no verificado
@@ -55,15 +55,21 @@ const authService = {
     // Login exitoso: resetea el contador de intentos fallidos
     await userRepository.resetFailedAttempts(user.id);
 
-    // CA.1: genera JWT con expiración definida
-    const token = jwt.sign(
-      { sub: user.id, username: user.username, email: user.email, token_version: user.token_version },
+    // CA.1: access token JWT (corta duración)
+    const accessToken = jwt.sign(
+      { sub: user.id, username: user.username, email: user.email, token_version: user.token_version, type: 'access' },
       env.JWT_SECRET,
-      { expiresIn: env.JWT_EXPIRES_IN }
+      { expiresIn: env.ACCESS_TOKEN_EXPIRES_IN }
     );
 
+    // Refresh token opaco (UUID) guardado en BD
+    const refreshToken = uuidv4();
+    const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+    await userRepository.createRefreshToken(user.id, refreshToken, refreshExpiresAt);
+
     return {
-      token,
+      accessToken,
+      refreshToken,
       user: {
         id: user.id,
         username: user.username,
@@ -90,9 +96,8 @@ const authService = {
 
     // CA.8: throttling - limit requests per account (e.g., 1 per minute)
     const THROTTLE_MINUTES = 1;
-    if (user.last_reset_request_at && 
+    if (user.last_reset_request_at &&
         new Date() - new Date(user.last_reset_request_at) < THROTTLE_MINUTES * 60 * 1000) {
-      // Even if throttled, return the generic message to avoid giving hints
       return { message: genericMessage };
     }
 
@@ -129,17 +134,49 @@ const authService = {
       throw new AppError(400, 'La nueva contraseña no puede ser igual a la anterior');
     }
 
-    // CA.3: enforce H1 policies (min 8 chars, 1 uppercase, 1 number)
-    // (Actual validation is also done via resetPasswordSchema, but we double-check here if needed)
-    
     // CA.5: hash new password, clear token, increment token_version (CA.7)
     const newPasswordHash = await bcrypt.hash(password, 12);
     await userRepository.updatePasswordAndInvalidateResetToken(user.id, newPasswordHash);
+    // CA.7: revocar todas las sesiones activas (H5)
+    await userRepository.deleteAllRefreshTokensForUser(user.id);
 
     return { message: 'Tu contraseña ha sido actualizada con éxito. Por favor, iniciá sesión de nuevo.' };
   },
 
-  async logout(userId) {
+  async refreshToken(currentRefreshToken) {
+    const newRefreshToken = uuidv4();
+    const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+
+    // Rotación atómica en transacción: invalida el token viejo y crea el nuevo en un solo paso.
+    // Si dos requests usan el mismo token simultáneamente, solo uno obtiene el user_id.
+    const userId = await userRepository.rotateRefreshToken(currentRefreshToken, newRefreshToken, refreshExpiresAt);
+    if (!userId) {
+      throw new AppError(401, 'Refresh token inválido o expirado');
+    }
+
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new AppError(401, 'Sesión revocada. Por favor, iniciá sesión de nuevo.');
+    }
+
+    if (user.deleted_at || user.is_suspended) {
+      throw new AppError(403, 'Cuenta suspendida');
+    }
+
+    const accessToken = jwt.sign(
+      { sub: user.id, username: user.username, email: user.email, token_version: user.token_version, type: 'access' },
+      env.JWT_SECRET,
+      { expiresIn: env.ACCESS_TOKEN_EXPIRES_IN }
+    );
+
+    return { accessToken, newRefreshToken };
+  },
+
+  async logout(userId, refreshToken = null) {
+    if (refreshToken) {
+      await userRepository.deleteRefreshToken(refreshToken);
+    }
+    // Invalida el access token actual inmediatamente (H3 CA.1)
     await userRepository.incrementTokenVersion(userId);
     return { message: 'Sesión cerrada exitosamente.' };
   },
@@ -154,9 +191,9 @@ const authService = {
       throw new AppError(400, 'El token es inválido o ha expirado. Por favor, solicitá uno nuevo.');
     }
 
-    return { 
+    return {
       message: 'Token válido. Por favor, ingresá tu nueva contraseña.',
-      token 
+      token,
     };
   },
 
@@ -184,10 +221,10 @@ const authService = {
       throw new AppError(400, 'La nueva contraseña no puede ser igual a la anterior');
     }
 
-    // Success: update password, invalidate sessions (token_version++), reset attempts
+    // Success: update password (token_version++), reset attempts, revocar todas las sesiones
     const newPasswordHash = await bcrypt.hash(newPassword, 12);
-    
     await userRepository.updatePasswordAndInvalidateResetToken(user.id, newPasswordHash);
+    await userRepository.deleteAllRefreshTokensForUser(user.id);
     await userRepository.resetFailedAttempts(user.id);
 
     // CA.5: Send email notification

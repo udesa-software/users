@@ -19,6 +19,8 @@ const envSchema = z.object({
 
   JWT_SECRET: z.string(),
   JWT_EXPIRES_IN: z.string().default('7d'),
+  ACCESS_TOKEN_EXPIRES_IN: z.string().default('15m'),
+  REFRESH_TOKEN_EXPIRES_IN: z.string().default('7d'),
 
   ALLOWED_EMAIL_DOMAIN: z.string().optional(), // ej: "udesa.edu.ar"
 

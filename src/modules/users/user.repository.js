@@ -1,4 +1,5 @@
-const { query } = require('../../config/database');
+const { query, withTransaction } = require('../../config/database');
+const { hashToken } = require('../../utils/tokenHash');
 
 const userRepository = {
   // CA.7: lookup uses LOWER() for case-insensitive comparison
@@ -194,6 +195,48 @@ const userRepository = {
       [userId, biography]
     );
     return result.rows[0] ?? null;
+  },
+
+  async createRefreshToken(userId, token, expiresAt) {
+    await query(
+      `INSERT INTO user_refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+      [userId, hashToken(token), expiresAt]
+    );
+  },
+
+  // Rotación atómica en transacción:
+  // 1. DELETE del token viejo (RETURNING user_id) — si dos requests usan el mismo token
+  //    simultáneamente, solo uno obtiene la fila; el otro ve 0 rows y recibe null.
+  // 2. INSERT del token nuevo dentro de la misma transacción.
+  // Devuelve el user_id si el token era válido, o null si no existía/expiró.
+  async rotateRefreshToken(oldToken, newToken, expiresAt) {
+    const oldHash = hashToken(oldToken);
+    const newHash = hashToken(newToken);
+
+    return withTransaction(async (client) => {
+      const { rows } = await client.query(
+        `DELETE FROM user_refresh_tokens WHERE token_hash = $1 AND expires_at > NOW() RETURNING user_id`,
+        [oldHash]
+      );
+
+      if (rows.length === 0) return null;
+
+      const { user_id } = rows[0];
+      await client.query(
+        `INSERT INTO user_refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+        [user_id, newHash, expiresAt]
+      );
+
+      return user_id;
+    });
+  },
+
+  async deleteRefreshToken(token) {
+    await query(`DELETE FROM user_refresh_tokens WHERE token_hash = $1`, [hashToken(token)]);
+  },
+
+  async deleteAllRefreshTokensForUser(userId) {
+    await query(`DELETE FROM user_refresh_tokens WHERE user_id = $1`, [userId]);
   },
 
   // H6: obtiene el perfil público del usuario (username + biography)

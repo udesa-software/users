@@ -1,4 +1,5 @@
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const userRouter = require('./modules/users/user.routes');
 const authRouter = require('./modules/auth/auth.routes');
 const adminAuthRouter = require('./modules/admin-auth/admin-auth.routes');
@@ -8,6 +9,7 @@ const { errorHandler } = require('./middlewares/errorHandler');
 const app = express();
 
 app.use(express.json());
+app.use(cookieParser());
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });

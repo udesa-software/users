@@ -15,7 +15,7 @@ async function authenticate(req, res, next) {
 
   try {
     const payload = jwt.verify(token, env.JWT_SECRET);
-    
+
     // CA.7: Verify session is not revoked (token_version must match)
     const user = await userRepository.findById(payload.sub);
 

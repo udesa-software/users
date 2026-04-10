@@ -18,6 +18,9 @@ router.post('/reset-password', validate(resetPasswordSchema), authController.res
 // GET /api/auth/reset-password?token=<uuid>
 router.get('/reset-password', authController.verifyResetToken);
 
+// POST /api/auth/refresh — get new access token using refresh token cookie
+router.post('/refresh', authController.refresh);
+
 // POST /api/auth/change-password
 router.post('/change-password', authenticate, validate(changePasswordSchema), authController.changePassword);
 // POST /api/auth/logout
