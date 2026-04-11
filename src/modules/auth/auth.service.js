@@ -29,8 +29,12 @@ const authService = {
     }
 
     // CA.2: cuenta bloqueada por demasiados intentos fallidos
-    if (user.locked_until && new Date(user.locked_until) > new Date()) {
-      throw new AppError(423, `Cuenta bloqueada temporalmente. Intentá de nuevo en ${Math.ceil((user.locked_until - new Date()) / 60000)} minutos.`);
+    if (user.locked_until) {
+      if (new Date(user.locked_until) > new Date()) {
+        throw new AppError(423, `Cuenta bloqueada temporalmente. Intentá de nuevo en ${Math.ceil((user.locked_until - new Date()) / 60000)} minutos.`);
+      }
+      // El bloqueo expiró: resetear contador para que no se re-bloquee con 1 solo error
+      await userRepository.resetFailedAttempts(user.id);
     }
 
     // CA.4: email no verificado

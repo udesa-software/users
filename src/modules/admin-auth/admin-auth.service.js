@@ -20,9 +20,13 @@ const adminAuthService = {
     }
 
     // H2 CA.3: verificar bloqueo por intentos fallidos
-    if (admin.locked_until && new Date(admin.locked_until) > new Date()) {
-      const mins = Math.ceil((new Date(admin.locked_until) - new Date()) / 60000);
-      throw new AppError(423, `Cuenta bloqueada temporalmente. Intentá de nuevo en ${mins} minutos.`);
+    if (admin.locked_until) {
+      if (new Date(admin.locked_until) > new Date()) {
+        const mins = Math.ceil((new Date(admin.locked_until) - new Date()) / 60000);
+        throw new AppError(423, `Cuenta bloqueada temporalmente. Intentá de nuevo en ${mins} minutos.`);
+      }
+      // El bloqueo expiró: resetear contador para que no se re-bloquee con 1 solo error
+      await adminRepository.resetFailedAttempts(admin.id);
     }
 
     const passwordMatch = await bcrypt.compare(password, admin.password_hash);
