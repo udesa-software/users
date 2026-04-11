@@ -75,7 +75,6 @@ const updateProfileSchema = z
 
 module.exports = {
   registerSchema,
-  resendVerificationSchema,
   deleteSchema,
   updatePreferencesSchema,
   updateProfileSchema,

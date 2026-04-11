@@ -15,7 +15,7 @@ const transporter = hasSmtp
   : null;
 
 async function sendVerificationEmail(toEmail, token) {
-  const verificationUrl = `${env.APP_URL}/api/users/verify-email?token=${token}`;
+  const verificationUrl = `${env.APP_URL}/api/auth/verify-email?token=${token}`;
 
   if (!transporter) {
     console.log('─────────────────────────────────────────────');
