@@ -1,6 +1,16 @@
 const { Pool } = require('pg');
 const { env } = require('./env');
 
+// Pool privilegiado para migraciones (CREATE TABLE, GRANT, etc.)
+const migrationPool = new Pool({
+  host: env.DB_HOST,
+  port: parseInt(env.DB_PORT, 10),
+  database: env.DB_NAME,
+  user: env.DB_ADMIN_USER || env.DB_USER,
+  password: env.DB_ADMIN_PASSWORD || env.DB_PASSWORD,
+});
+
+// Pool de la app con privilegios limitados (SELECT, INSERT, UPDATE, DELETE)
 const pool = new Pool({
   host: env.DB_HOST,
   port: parseInt(env.DB_PORT, 10),
@@ -29,4 +39,4 @@ async function withTransaction(fn) {
   }
 }
 
-module.exports = { pool, query, withTransaction };
+module.exports = { pool, migrationPool, query, withTransaction };
