@@ -18,6 +18,7 @@ const envSchema = z.object({
   APP_URL: z.string().url(),
 
   JWT_SECRET: z.string(),
+  ADMIN_JWT_SECRET: z.string(),
   JWT_EXPIRES_IN: z.string().default('7d'),
   ACCESS_TOKEN_EXPIRES_IN: z.string().default('15m'),
   REFRESH_TOKEN_EXPIRES_IN: z.string().default('7d'),
