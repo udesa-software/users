@@ -37,6 +37,8 @@ jest.mock('../../../config/redis', () => ({
   redisClient: { set: jest.fn().mockResolvedValue('OK') },
 }));
 
+const { redisClient } = require('../../../config/redis');
+
 jest.mock('bcryptjs');
 jest.mock('jsonwebtoken');
 jest.mock('uuid');
@@ -209,6 +211,12 @@ describe('authService.logout', () => {
     const result = await authService.logout('user-uuid-1', 'some-refresh-token');
 
     expect(result.message).toBeDefined();
+  });
+
+  it('no falla si Redis no está disponible al publicar la revocación', async () => {
+    redisClient.set.mockRejectedValueOnce(new Error('Redis down'));
+
+    await expect(authService.logout('user-uuid-1', 'some-refresh-token')).resolves.toBeDefined();
   });
 });
 
