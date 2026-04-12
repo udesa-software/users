@@ -25,7 +25,7 @@ jest.mock('../../../config/mailer', () => ({
 }));
 
 jest.mock('../../../config/env', () => ({
-  env: { JWT_SECRET: 'test-secret', ACCESS_TOKEN_EXPIRES_IN: '15m', REFRESH_TOKEN_EXPIRES_IN: '7d' },
+  env: { JWT_SECRET: 'test-secret', ADMIN_JWT_SECRET: 'test-admin-secret', ACCESS_TOKEN_EXPIRES_IN: '15m', REFRESH_TOKEN_EXPIRES_IN: '7d' },
 }));
 
 jest.mock('bcryptjs');
@@ -82,7 +82,7 @@ describe('adminAuthService.login', () => {
 
     expect(jwt.sign).toHaveBeenCalledWith(
       expect.objectContaining({ role: 'superadmin', must_change_password: false, type: 'access' }),
-      'test-secret',
+      'test-admin-secret',
       { expiresIn: '15m' }
     );
     expect(jwt.sign).toHaveBeenCalledTimes(1);
@@ -215,7 +215,7 @@ describe('adminAuthService.refreshToken', () => {
 
     expect(jwt.sign).toHaveBeenCalledWith(
       expect.objectContaining({ sub: 'admin-uuid-1', role: 'superadmin', type: 'access' }),
-      'test-secret',
+      'test-admin-secret',
       { expiresIn: '15m' }
     );
   });

@@ -18,6 +18,7 @@ const envSchema = z.object({
   APP_URL: z.string().url(),
 
   JWT_SECRET: z.string(),
+  ADMIN_JWT_SECRET: z.string(),
   JWT_EXPIRES_IN: z.string().default('7d'),
   ACCESS_TOKEN_EXPIRES_IN: z.string().default('15m'),
   REFRESH_TOKEN_EXPIRES_IN: z.string().default('7d'),
@@ -26,6 +27,9 @@ const envSchema = z.object({
 
   INITIAL_SUPERADMIN_EMAIL: z.string().email().optional(),
   INITIAL_SUPERADMIN_TEMP_PASSWORD: z.string().optional(),
+
+  // URL del servicio de friends (H4 CA.2/CA.4: eliminar relaciones al borrar cuenta)
+  FRIENDS_SERVICE_URL: z.string().url().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

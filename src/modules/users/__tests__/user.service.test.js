@@ -4,6 +4,7 @@ const { userService } = require('../user.service');
 const { userRepository } = require('../user.repository');
 const { sendVerificationEmail } = require('../../../config/mailer');
 const { AppError } = require('../../../middlewares/errorHandler');
+const { friendsClient } = require('../../../clients/friendsClient');
 
 // Reemplazamos los módulos reales por versiones falsas que controlamos.
 // Usamos factory functions (el () => ...) para que Jest nunca llegue a
@@ -30,6 +31,12 @@ jest.mock('../user.repository', () => ({
 
 jest.mock('../../../config/mailer', () => ({
   sendVerificationEmail: jest.fn(),
+}));
+
+jest.mock('../../../clients/friendsClient', () => ({
+  friendsClient: {
+    deleteUserRelationships: jest.fn(),
+  },
 }));
 
 jest.mock('bcryptjs');
@@ -284,6 +291,54 @@ describe('userService.delete', () => {
 
     await expect(userService.delete('user-uuid-1', 'wrong')).rejects.toMatchObject({ statusCode: 401 });
     expect(userRepository.markDeleted).not.toHaveBeenCalled();
+  });
+
+  describe('llamada al servicio friends (CA.2/CA.4)', () => {
+    beforeEach(() => {
+      process.env.FRIENDS_SERVICE_URL = 'http://friends-service';
+      friendsClient.deleteUserRelationships.mockResolvedValue();
+    });
+
+    afterEach(() => {
+      delete process.env.FRIENDS_SERVICE_URL;
+    });
+
+    it('llama a deleteUserRelationships con el userId del usuario eliminado', async () => {
+      await userService.delete('user-uuid-1', 'Password1');
+
+      expect(friendsClient.deleteUserRelationships).toHaveBeenCalledWith('user-uuid-1');
+    });
+
+    it('ejecuta el soft-delete antes de notificar a friends', async () => {
+      const orden = [];
+      userRepository.markDeleted.mockImplementation(() => { orden.push('markDeleted'); return Promise.resolve(); });
+      friendsClient.deleteUserRelationships.mockImplementation(() => { orden.push('deleteRelationships'); return Promise.resolve(); });
+
+      await userService.delete('user-uuid-1', 'Password1');
+
+      expect(orden).toEqual(['markDeleted', 'deleteRelationships']);
+    });
+
+    it('no llama a friendsClient si FRIENDS_SERVICE_URL no está configurado', async () => {
+      delete process.env.FRIENDS_SERVICE_URL;
+
+      await userService.delete('user-uuid-1', 'Password1');
+
+      expect(friendsClient.deleteUserRelationships).not.toHaveBeenCalled();
+    });
+
+    it('propaga el error si el servicio friends no está disponible', async () => {
+      friendsClient.deleteUserRelationships.mockRejectedValue(new Error('Friends service error: 503'));
+
+      await expect(userService.delete('user-uuid-1', 'Password1')).rejects.toThrow('Friends service error: 503');
+    });
+
+    it('no llama a friendsClient si la contraseña es incorrecta', async () => {
+      bcrypt.compare.mockResolvedValue(false);
+
+      await expect(userService.delete('user-uuid-1', 'wrong')).rejects.toThrow();
+      expect(friendsClient.deleteUserRelationships).not.toHaveBeenCalled();
+    });
   });
 });
 
