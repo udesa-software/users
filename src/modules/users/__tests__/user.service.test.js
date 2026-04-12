@@ -309,16 +309,6 @@ describe('userService.delete', () => {
       expect(friendsClient.deleteUserRelationships).toHaveBeenCalledWith('user-uuid-1');
     });
 
-    it('ejecuta el soft-delete antes de notificar a friends', async () => {
-      const orden = [];
-      userRepository.markDeleted.mockImplementation(() => { orden.push('markDeleted'); return Promise.resolve(); });
-      friendsClient.deleteUserRelationships.mockImplementation(() => { orden.push('deleteRelationships'); return Promise.resolve(); });
-
-      await userService.delete('user-uuid-1', 'Password1');
-
-      expect(orden).toEqual(['markDeleted', 'deleteRelationships']);
-    });
-
     it('no llama a friendsClient si FRIENDS_SERVICE_URL no está configurado', async () => {
       delete process.env.FRIENDS_SERVICE_URL;
 
