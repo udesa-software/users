@@ -1,27 +1,16 @@
 const { authService } = require('./auth.service');
 
-const REFRESH_COOKIE_NAME = 'refreshToken';
-
-function getRefreshCookieOptions() {
-  return {
-    httpOnly: true,
-    secure: true,
-    sameSite: isProduction ? 'None' : 'Lax',
-    path: '/api/auth',
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
-  };
-}
-
 const authController = {
   async login(req, res, next) {
     try {
       const { accessToken, refreshToken, user } = await authService.login(req.body);
 
-      res.cookie(REFRESH_COOKIE_NAME, refreshToken, getRefreshCookieOptions());
-
+      // El refreshToken se devuelve en el body para que el cliente móvil
+      // lo almacene en SecureStorage (no como cookie HttpOnly)
       res.status(200).json({
         message: 'Inicio de sesión exitoso.',
         accessToken,
+        refreshToken,
         user,
       });
     } catch (err) {
@@ -31,14 +20,13 @@ const authController = {
 
   async refresh(req, res, next) {
     try {
-      const token = req.cookies[REFRESH_COOKIE_NAME];
+      const token = req.body.refreshToken;
       if (!token) {
         return res.status(401).json({ error: 'Refresh token requerido' });
       }
 
       const { accessToken, newRefreshToken } = await authService.refreshToken(token);
-      res.cookie(REFRESH_COOKIE_NAME, newRefreshToken, getRefreshCookieOptions());
-      res.status(200).json({ accessToken });
+      res.status(200).json({ accessToken, refreshToken: newRefreshToken });
     } catch (err) {
       next(err);
     }
@@ -64,9 +52,8 @@ const authController = {
 
   async logout(req, res, next) {
     try {
-      const refreshToken = req.cookies[REFRESH_COOKIE_NAME];
+      const refreshToken = req.body.refreshToken;
       const result = await authService.logout(req.user.sub, refreshToken);
-      res.clearCookie(REFRESH_COOKIE_NAME, { path: '/api/auth' });
       res.status(200).json(result);
     } catch (err) {
       next(err);
@@ -77,9 +64,9 @@ const authController = {
     try {
       const token = req.query['token'];
       await authService.verifyResetToken(token); // Valida internamente
-      
+
       const { env } = require('../../config/env');
-      
+
       // Intentamos usar la URL específica de reset, sino el scheme base
       const deepLinkBase = env.MOBILE_RESET_PASSWORD_URL || 'udesamigos://ResetPassword';
       // Si el link base ya contiene el esquema y el path, solo agregamos el token
@@ -237,7 +224,6 @@ const authController = {
     try {
       const userId = req.user.sub;
       const result = await authService.changePassword(userId, req.body);
-      res.clearCookie(REFRESH_COOKIE_NAME, { path: '/api/auth' });
       res.status(200).json(result);
     } catch (err) {
       next(err);
