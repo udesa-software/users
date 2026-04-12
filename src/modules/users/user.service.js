@@ -106,13 +106,12 @@ const userService = {
       throw new AppError(401, 'Contraseña incorrecta');
     }
 
-    // CA.1: soft-delete — no borra la fila, solo marca deleted_at
-    await userRepository.markDeleted(userId);
-
     // CA.2/CA.4: eliminar todas las relaciones de amistad en el servicio friends
     if (process.env.FRIENDS_SERVICE_URL) {
       await friendsClient.deleteUserRelationships(userId);
     }
+    // CA.1: soft-delete — no borra la fila, solo marca deleted_at
+    await userRepository.markDeleted(userId);
   },
 
   async getPreferences(userId) {
