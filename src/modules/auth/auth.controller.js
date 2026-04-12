@@ -1,10 +1,8 @@
 const { authService } = require('./auth.service');
-const { env } = require('../../config/env');
 
 const REFRESH_COOKIE_NAME = 'refreshToken';
 
 function getRefreshCookieOptions() {
-  const isProduction = env.APP_URL.startsWith('https');
   return {
     httpOnly: true,
     secure: true,
