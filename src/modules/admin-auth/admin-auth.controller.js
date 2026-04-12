@@ -7,7 +7,7 @@ function getRefreshCookieOptions() {
   const isProduction = env.APP_URL.startsWith('https');
   return {
     httpOnly: true,
-    secure: isProduction,
+    secure: true,
     sameSite: isProduction ? 'None' : 'Lax',
     path: '/api/admin/auth',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms

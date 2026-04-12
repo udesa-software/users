@@ -14,7 +14,7 @@ async function authenticateAdmin(req, _res, next) {
   }
 
   try {
-    const payload = jwt.verify(token, env.JWT_SECRET);
+    const payload = jwt.verify(token, env.ADMIN_JWT_SECRET);
 
     // Verifica que sea un token de admin (debe tener campo role)
     if (!payload.role) {

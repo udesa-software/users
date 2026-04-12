@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { env } = require('../config/env');
 const { AppError } = require('./errorHandler');
-const { userRepository } = require('../modules/users/user.repository');
+const { redisClient } = require('../config/redis');
 
 async function authenticate(req, res, next) {
   const authHeader = req.headers['authorization'];
@@ -16,11 +16,14 @@ async function authenticate(req, res, next) {
   try {
     const payload = jwt.verify(token, env.JWT_SECRET);
 
-    // CA.7: Verify session is not revoked (token_version must match)
-    const user = await userRepository.findById(payload.sub);
-
-    if (!user || user.token_version !== payload.token_version) {
-      return next(new AppError(401, 'Sesión expirada o revocada. Por favor, iniciá sesión de nuevo.'));
+    // Verificar si el token fue revocado consultando Redis (O(1))
+    try {
+      const revokedVersion = await redisClient.get(`revoked:${payload.sub}`);
+      if (revokedVersion !== null && payload.token_version < parseInt(revokedVersion, 10)) {
+        return next(new AppError(401, 'Sesión expirada o revocada. Por favor, iniciá sesión de nuevo.'));
+      }
+    } catch {
+      // Redis no disponible — fail open, el JWT expira en 15 min
     }
 
     req.user = payload;

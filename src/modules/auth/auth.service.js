@@ -5,6 +5,14 @@ const { userRepository } = require('../users/user.repository');
 const { sendResetPasswordEmail, sendPasswordChangedEmail, sendVerificationEmail } = require('../../config/mailer');
 const { AppError } = require('../../middlewares/errorHandler');
 const { env } = require('../../config/env');
+const { redisClient } = require('../../config/redis');
+
+const REVOKED_TTL_SEC = 15 * 60; // matches AT lifetime
+
+function publishRevocation(userId, newTokenVersion) {
+  redisClient.set(`revoked:${userId}`, newTokenVersion, 'EX', REVOKED_TTL_SEC)
+    .catch((err) => console.error('[Redis] failed to publish revocation:', err));
+}
 
 const TOKEN_EXPIRY_HOURS = 24;
 
@@ -136,9 +144,10 @@ const authService = {
 
     // CA.5: hash new password, clear token, increment token_version (CA.7)
     const newPasswordHash = await bcrypt.hash(password, 12);
-    await userRepository.updatePasswordAndInvalidateResetToken(user.id, newPasswordHash);
+    const { token_version } = await userRepository.updatePasswordAndInvalidateResetToken(user.id, newPasswordHash);
     // CA.7: revocar todas las sesiones activas (H5)
     await userRepository.deleteAllRefreshTokensForUser(user.id);
+    publishRevocation(user.id, token_version);
 
     return { message: 'Tu contraseña ha sido actualizada con éxito. Por favor, iniciá sesión de nuevo.' };
   },
@@ -177,7 +186,8 @@ const authService = {
       await userRepository.deleteRefreshToken(refreshToken);
     }
     // Invalida el access token actual inmediatamente (H3 CA.1)
-    await userRepository.incrementTokenVersion(userId);
+    const { token_version } = await userRepository.incrementTokenVersion(userId);
+    publishRevocation(userId, token_version);
     return { message: 'Sesión cerrada exitosamente.' };
   },
 
@@ -223,9 +233,10 @@ const authService = {
 
     // Success: update password (token_version++), reset attempts, revocar todas las sesiones
     const newPasswordHash = await bcrypt.hash(newPassword, 12);
-    await userRepository.updatePasswordAndInvalidateResetToken(user.id, newPasswordHash);
+    const { token_version } = await userRepository.updatePasswordAndInvalidateResetToken(user.id, newPasswordHash);
     await userRepository.deleteAllRefreshTokensForUser(user.id);
     await userRepository.resetFailedAttempts(user.id);
+    publishRevocation(user.id, token_version);
 
     // CA.5: Send email notification
     sendPasswordChangedEmail(user.email).catch((err) =>

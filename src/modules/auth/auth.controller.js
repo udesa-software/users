@@ -1,13 +1,11 @@
 const { authService } = require('./auth.service');
-const { env } = require('../../config/env');
 
 const REFRESH_COOKIE_NAME = 'refreshToken';
 
 function getRefreshCookieOptions() {
-  const isProduction = env.APP_URL.startsWith('https');
   return {
     httpOnly: true,
-    secure: isProduction,
+    secure: true,
     sameSite: isProduction ? 'None' : 'Lax',
     path: '/api/auth',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms

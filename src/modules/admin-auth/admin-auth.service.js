@@ -40,7 +40,7 @@ const adminAuthService = {
 
     await adminRepository.resetFailedAttempts(admin.id);
 
-    // H2 CA.1: access token JWT (corta duración)
+    // H2 CA.1: access token JWT (corta duración) — secret separado de users
     const accessToken = jwt.sign(
       {
         sub: admin.id,
@@ -50,7 +50,7 @@ const adminAuthService = {
         must_change_password: admin.must_change_password,
         type: 'access',
       },
-      env.JWT_SECRET,
+      env.ADMIN_JWT_SECRET,
       { expiresIn: env.ACCESS_TOKEN_EXPIRES_IN }
     );
 
@@ -95,7 +95,7 @@ const adminAuthService = {
         must_change_password: admin.must_change_password,
         type: 'access',
       },
-      env.JWT_SECRET,
+      env.ADMIN_JWT_SECRET,
       { expiresIn: env.ACCESS_TOKEN_EXPIRES_IN }
     );
 
