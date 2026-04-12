@@ -49,4 +49,10 @@ const changePasswordSchema = z.object({
   path: ['confirmPassword'],
 });
 
-module.exports = { loginSchema, forgotPasswordSchema, resetPasswordSchema, changePasswordSchema };
+const resendVerificationSchema = z.object({
+  email: z
+    .string({ required_error: 'El email es obligatorio' })
+    .email('El formato del email no es válido'),
+});
+
+module.exports = { loginSchema, forgotPasswordSchema, resetPasswordSchema, changePasswordSchema, resendVerificationSchema };

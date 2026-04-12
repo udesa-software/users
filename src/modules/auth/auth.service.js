@@ -2,7 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { userRepository } = require('../users/user.repository');
-const { sendResetPasswordEmail, sendPasswordChangedEmail } = require('../../config/mailer');
+const { sendResetPasswordEmail, sendPasswordChangedEmail, sendVerificationEmail } = require('../../config/mailer');
 const { AppError } = require('../../middlewares/errorHandler');
 const { env } = require('../../config/env');
 const { redisClient } = require('../../config/redis');
@@ -14,6 +14,13 @@ function publishRevocation(userId, newTokenVersion) {
     .catch((err) => console.error('[Redis] failed to publish revocation:', err));
 }
 
+const TOKEN_EXPIRY_HOURS = 24;
+
+function tokenExpiresAt() {
+  const date = new Date();
+  date.setHours(date.getHours() + TOKEN_EXPIRY_HOURS);
+  return date;
+}
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 const authService = {
@@ -237,6 +244,40 @@ const authService = {
     );
 
     return { message: 'Tu contraseña ha sido cambiada con éxito. Por seguridad, se han cerrado todas tus sesiones activas.' };
+  },
+
+  async verifyEmail(token) {
+    if (!token) {
+      throw new AppError(400, 'Token requerido');
+    }
+    // CA.6: token must exist and not be expired
+    const user = await userRepository.findByVerifyToken(token);
+    if (!user) {
+      throw new AppError(400, 'El token es inválido o ha expirado');
+    }
+
+    await userRepository.markVerified(user.id);
+  },
+
+  async resendVerification(email) {
+    const user = await userRepository.findByEmail(email.toLowerCase());
+    if (!user) {
+      throw new AppError(404, 'No existe una cuenta con ese email');
+    }
+
+    if (user.is_verified) {
+      throw new AppError(400, 'La cuenta ya fue verificada');
+    }
+
+    // CA.6: fresh token with new 24h window
+    const newToken = uuidv4();
+    const newExpiresAt = tokenExpiresAt();
+
+    await userRepository.updateVerifyToken(user.id, newToken, newExpiresAt);
+
+    sendVerificationEmail(email.toLowerCase(), newToken).catch((err) =>
+      console.error('Failed to resend verification email:', err)
+    );
   },
 };
 

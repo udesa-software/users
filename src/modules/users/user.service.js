@@ -62,36 +62,6 @@ const userService = {
     return user;
   },
 
-  async verifyEmail(token) {
-    // CA.6: token must exist and not be expired
-    const user = await userRepository.findByVerifyToken(token);
-    if (!user) {
-      throw new AppError(400, 'El token es inválido o ha expirado');
-    }
-
-    await userRepository.markVerified(user.id);
-  },
-
-  async resendVerification(email) {
-    const user = await userRepository.findByEmail(email.toLowerCase());
-    if (!user) {
-      throw new AppError(404, 'No existe una cuenta con ese email');
-    }
-
-    if (user.is_verified) {
-      throw new AppError(400, 'La cuenta ya fue verificada');
-    }
-
-    // CA.6: fresh token with new 24h window
-    const newToken = uuidv4();
-    const newExpiresAt = tokenExpiresAt();
-
-    await userRepository.updateVerifyToken(user.id, newToken, newExpiresAt);
-
-    sendVerificationEmail(email.toLowerCase(), newToken).catch((err) =>
-      console.error('Failed to resend verification email:', err)
-    );
-  },
 
   // CA.3: userId viene del JWT (req.user.sub), password es solo la confirmación
   async delete(userId, password) {
