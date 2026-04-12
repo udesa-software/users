@@ -1,16 +1,16 @@
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
-const { userService } = require('../user.service');
-const { userRepository } = require('../user.repository');
-const { sendVerificationEmail } = require('../../../config/mailer');
-const { AppError } = require('../../../middlewares/errorHandler');
-const { friendsClient } = require('../../../clients/friendsClient');
+const { userService } = require('../../src/modules/users/user.service');
+const { userRepository } = require('../../src/modules/users/user.repository');
+const { sendVerificationEmail } = require('../../src/config/mailer');
+const { AppError } = require('../../src/middlewares/errorHandler');
+const { friendsClient } = require('../../src/clients/friendsClient');
 
 // Reemplazamos los módulos reales por versiones falsas que controlamos.
 // Usamos factory functions (el () => ...) para que Jest nunca llegue a
 // leer los archivos reales (que dependen de la base de datos).
 
-jest.mock('../user.repository', () => ({
+jest.mock('../../src/modules/users/user.repository', () => ({
   userRepository: {
     findByEmail: jest.fn(),
     findByUsername: jest.fn(),
@@ -29,11 +29,11 @@ jest.mock('../user.repository', () => ({
   },
 }));
 
-jest.mock('../../../config/mailer', () => ({
+jest.mock('../../src/config/mailer', () => ({
   sendVerificationEmail: jest.fn(),
 }));
 
-jest.mock('../../../clients/friendsClient', () => ({
+jest.mock('../../src/clients/friendsClient', () => ({
   friendsClient: {
     deleteUserRelationships: jest.fn(),
   },
@@ -42,7 +42,7 @@ jest.mock('../../../clients/friendsClient', () => ({
 jest.mock('bcryptjs');
 jest.mock('uuid');
 
-// Datos de prueba 
+// Datos de prueba
 
 const INPUT_VALIDO = {
   username: 'testuser',
@@ -169,7 +169,7 @@ describe('userService.register', () => {
   });
 });
 
-// verifyEmail 
+// verifyEmail
 
 describe('userService.verifyEmail', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -197,7 +197,7 @@ describe('userService.verifyEmail', () => {
   });
 });
 
-// resendVerification 
+// resendVerification
 
 describe('userService.resendVerification', () => {
   beforeEach(() => {

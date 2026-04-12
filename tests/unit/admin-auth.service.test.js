@@ -1,11 +1,11 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
-const { adminAuthService } = require('../admin-auth.service');
-const { adminRepository } = require('../../admins/admin.repository');
-const { sendPasswordChangedEmail } = require('../../../config/mailer');
+const { adminAuthService } = require('../../src/modules/admin-auth/admin-auth.service');
+const { adminRepository } = require('../../src/modules/admins/admin.repository');
+const { sendPasswordChangedEmail } = require('../../src/config/mailer');
 
-jest.mock('../../admins/admin.repository', () => ({
+jest.mock('../../src/modules/admins/admin.repository', () => ({
   adminRepository: {
     findByEmail: jest.fn(),
     findById: jest.fn(),
@@ -20,11 +20,11 @@ jest.mock('../../admins/admin.repository', () => ({
   },
 }));
 
-jest.mock('../../../config/mailer', () => ({
+jest.mock('../../src/config/mailer', () => ({
   sendPasswordChangedEmail: jest.fn(),
 }));
 
-jest.mock('../../../config/env', () => ({
+jest.mock('../../src/config/env', () => ({
   env: { JWT_SECRET: 'test-secret', ADMIN_JWT_SECRET: 'test-admin-secret', ACCESS_TOKEN_EXPIRES_IN: '15m', REFRESH_TOKEN_EXPIRES_IN: '7d' },
 }));
 

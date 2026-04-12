@@ -1,11 +1,11 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
-const { authService } = require('../auth.service');
-const { userRepository } = require('../../users/user.repository');
-const { sendResetPasswordEmail, sendPasswordChangedEmail } = require('../../../config/mailer');
+const { authService } = require('../../src/modules/auth/auth.service');
+const { userRepository } = require('../../src/modules/users/user.repository');
+const { sendResetPasswordEmail, sendPasswordChangedEmail } = require('../../src/config/mailer');
 
-jest.mock('../../users/user.repository', () => ({
+jest.mock('../../src/modules/users/user.repository', () => ({
   userRepository: {
     findByEmail: jest.fn(),
     findByUsername: jest.fn(),
@@ -24,12 +24,12 @@ jest.mock('../../users/user.repository', () => ({
   },
 }));
 
-jest.mock('../../../config/mailer', () => ({
+jest.mock('../../src/config/mailer', () => ({
   sendResetPasswordEmail: jest.fn(),
   sendPasswordChangedEmail: jest.fn(),
 }));
 
-jest.mock('../../../config/env', () => ({
+jest.mock('../../src/config/env', () => ({
   env: { JWT_SECRET: 'test-secret', ACCESS_TOKEN_EXPIRES_IN: '15m', REFRESH_TOKEN_EXPIRES_IN: '7d' },
 }));
 

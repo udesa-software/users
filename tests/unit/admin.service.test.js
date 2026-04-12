@@ -1,10 +1,10 @@
 const bcrypt = require('bcryptjs');
-const { adminService } = require('../admin.service');
-const { adminRepository } = require('../admin.repository');
-const { sendTempPasswordEmail } = require('../../../config/mailer');
-const { env } = require('../../../config/env');
+const { adminService } = require('../../src/modules/admins/admin.service');
+const { adminRepository } = require('../../src/modules/admins/admin.repository');
+const { sendTempPasswordEmail } = require('../../src/config/mailer');
+const { env } = require('../../src/config/env');
 
-jest.mock('../admin.repository', () => ({
+jest.mock('../../src/modules/admins/admin.repository', () => ({
   adminRepository: {
     findByEmail: jest.fn(),
     findById: jest.fn(),
@@ -13,11 +13,11 @@ jest.mock('../admin.repository', () => ({
   },
 }));
 
-jest.mock('../../../config/mailer', () => ({
+jest.mock('../../src/config/mailer', () => ({
   sendTempPasswordEmail: jest.fn(),
 }));
 
-jest.mock('../../../config/env', () => ({ env: { ALLOWED_EMAIL_DOMAIN: undefined } }));
+jest.mock('../../src/config/env', () => ({ env: { ALLOWED_EMAIL_DOMAIN: undefined } }));
 
 jest.mock('bcryptjs');
 jest.mock('uuid', () => ({ v4: () => 'aaaabbbbccccddddeeeeffffgggghhhh' }));
