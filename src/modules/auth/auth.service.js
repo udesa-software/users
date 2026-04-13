@@ -201,8 +201,12 @@ const authService = {
     }
 
     // CA.4: Check lockout
-    if (user.locked_until && new Date(user.locked_until) > new Date()) {
-      throw new AppError(423, `Cuenta bloqueada temporalmente. Intentá de nuevo en ${Math.ceil((user.locked_until - new Date()) / 60000)} minutos.`);
+    if (user.locked_until) {
+      if (new Date(user.locked_until) > new Date()) {
+        throw new AppError(423, `Cuenta bloqueada temporalmente. Intentá de nuevo en ${Math.ceil((user.locked_until - new Date()) / 60000)} minutos.`);
+      }
+      // El bloqueo expiró: resetear contador para que no se re-bloquee con 1 solo error
+      await userRepository.resetFailedAttempts(user.id);
     }
 
     const passwordMatch = await bcrypt.compare(currentPassword, user.password_hash);

@@ -516,6 +516,16 @@ describe('authService.changePassword', () => {
     await expect(authService.changePassword('user-uuid-1', INPUT_VALIDO)).rejects.toMatchObject({ statusCode: 423 });
   });
 
+  it('resetea el contador de intentos cuando el bloqueo ya expiró (bug fix)', async () => {
+    const bloqueadoHaceRato = new Date(Date.now() - 60 * 1000); // expiró hace 1 min
+    userRepository.findById.mockResolvedValue({ ...USUARIO_DB, locked_until: bloqueadoHaceRato });
+    userRepository.resetFailedAttempts.mockResolvedValue();
+
+    await authService.changePassword('user-uuid-1', INPUT_VALIDO);
+
+    expect(userRepository.resetFailedAttempts).toHaveBeenCalledWith('user-uuid-1');
+  });
+
   it('lanza error 401 si la contraseña actual es incorrecta', async () => {
     bcrypt.compare.mockReset();
     bcrypt.compare.mockResolvedValue(false);
