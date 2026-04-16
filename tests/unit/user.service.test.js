@@ -1,16 +1,16 @@
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
-const { userService } = require('../user.service');
-const { userRepository } = require('../user.repository');
-const { sendVerificationEmail } = require('../../../config/mailer');
-const { AppError } = require('../../../middlewares/errorHandler');
-const { friendsClient } = require('../../../clients/friendsClient');
+const { userService } = require('../../src/modules/users/user.service');
+const { userRepository } = require('../../src/modules/users/user.repository');
+const { sendVerificationEmail } = require('../../src/config/mailer');
+const { AppError } = require('../../src/middlewares/errorHandler');
+const { friendsClient } = require('../../src/clients/friendsClient');
 
 // Reemplazamos los módulos reales por versiones falsas que controlamos.
 // Usamos factory functions (el () => ...) para que Jest nunca llegue a
 // leer los archivos reales (que dependen de la base de datos).
 
-jest.mock('../user.repository', () => ({
+jest.mock('../../src/modules/users/user.repository', () => ({
   userRepository: {
     findByEmail: jest.fn(),
     findByUsername: jest.fn(),
@@ -29,11 +29,11 @@ jest.mock('../user.repository', () => ({
   },
 }));
 
-jest.mock('../../../config/mailer', () => ({
+jest.mock('../../src/config/mailer', () => ({
   sendVerificationEmail: jest.fn(),
 }));
 
-jest.mock('../../../clients/friendsClient', () => ({
+jest.mock('../../src/clients/friendsClient', () => ({
   friendsClient: {
     deleteUserRelationships: jest.fn(),
   },
@@ -42,7 +42,7 @@ jest.mock('../../../clients/friendsClient', () => ({
 jest.mock('bcryptjs');
 jest.mock('uuid');
 
-// Datos de prueba 
+// Datos de prueba
 
 const INPUT_VALIDO = {
   username: 'testuser',
@@ -169,6 +169,94 @@ describe('userService.register', () => {
   });
 });
 
+// verifyEmail
+
+describe('userService.verifyEmail', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('marca la cuenta como verificada cuando el token es válido', async () => {
+    userRepository.findByVerifyToken.mockResolvedValue(USUARIO_DB);
+    userRepository.markVerified.mockResolvedValue();
+
+    await userService.verifyEmail('token-valido');
+
+    expect(userRepository.markVerified).toHaveBeenCalledWith('user-uuid-1');
+  });
+
+  it('lanza error 400 si el token no existe o ya expiró', async () => {
+    userRepository.findByVerifyToken.mockResolvedValue(null);
+
+    await expect(userService.verifyEmail('token-vencido')).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('no llama a markVerified si el token es inválido', async () => {
+    userRepository.findByVerifyToken.mockResolvedValue(null);
+
+    await expect(userService.verifyEmail('token-malo')).rejects.toThrow();
+    expect(userRepository.markVerified).not.toHaveBeenCalled();
+  });
+});
+
+// resendVerification
+
+describe('userService.resendVerification', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    uuidv4.mockReturnValue('nuevo-token');
+    userRepository.updateVerifyToken.mockResolvedValue();
+    sendVerificationEmail.mockResolvedValue();
+  });
+
+  it('genera un nuevo token y actualiza el registro del usuario', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: false });
+
+    await userService.resendVerification('test@example.com');
+
+    expect(userRepository.updateVerifyToken).toHaveBeenCalledWith(
+      'user-uuid-1',
+      'nuevo-token',
+      expect.any(Date)
+    );
+  });
+
+  it('normaliza el email a minúsculas antes de buscar', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: false });
+
+    await userService.resendVerification('USER@EXAMPLE.COM');
+
+    expect(userRepository.findByEmail).toHaveBeenCalledWith('user@example.com');
+  });
+
+  it('envía el email con el nuevo token', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: false });
+
+    await userService.resendVerification('test@example.com');
+    await Promise.resolve(); // espera el fire-and-forget
+
+    expect(sendVerificationEmail).toHaveBeenCalledWith('test@example.com', 'nuevo-token');
+  });
+
+  it('no falla si el envío del email falla', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: false });
+    sendVerificationEmail.mockRejectedValue(new Error('SMTP caído'));
+
+    await expect(userService.resendVerification('test@example.com')).resolves.toBeUndefined();
+  });
+
+  it('lanza error 404 si el email no está registrado', async () => {
+    userRepository.findByEmail.mockResolvedValue(null);
+
+    await expect(userService.resendVerification('noexiste@x.com')).rejects.toMatchObject({ statusCode: 404 });
+    expect(userRepository.updateVerifyToken).not.toHaveBeenCalled();
+  });
+
+  it('lanza error 400 si la cuenta ya está verificada', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: true });
+
+    await expect(userService.resendVerification('test@example.com')).rejects.toMatchObject({ statusCode: 400 });
+    expect(userRepository.updateVerifyToken).not.toHaveBeenCalled();
+  });
+});
 
 // delete
 describe('userService.delete', () => {

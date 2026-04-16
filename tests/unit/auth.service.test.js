@@ -1,11 +1,11 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
-const { authService } = require('../auth.service');
-const { userRepository } = require('../../users/user.repository');
-const { sendResetPasswordEmail, sendPasswordChangedEmail, sendVerificationEmail } = require('../../../config/mailer');
+const { authService } = require('../../src/modules/auth/auth.service');
+const { userRepository } = require('../../src/modules/users/user.repository');
+const { sendResetPasswordEmail, sendPasswordChangedEmail, sendVerificationEmail } = require('../../src/config/mailer');
 
-jest.mock('../../users/user.repository', () => ({
+jest.mock('../../src/modules/users/user.repository', () => ({
   userRepository: {
     findByEmail: jest.fn(),
     findByUsername: jest.fn(),
@@ -27,21 +27,21 @@ jest.mock('../../users/user.repository', () => ({
   },
 }));
 
-jest.mock('../../../config/mailer', () => ({
+jest.mock('../../src/config/mailer', () => ({
   sendResetPasswordEmail: jest.fn(),
   sendPasswordChangedEmail: jest.fn(),
   sendVerificationEmail: jest.fn(),
 }));
 
-jest.mock('../../../config/env', () => ({
+jest.mock('../../src/config/env', () => ({
   env: { JWT_SECRET: 'test-secret', ACCESS_TOKEN_EXPIRES_IN: '15m', REFRESH_TOKEN_EXPIRES_IN: '7d' },
 }));
 
-jest.mock('../../../config/redis', () => ({
+jest.mock('../../src/config/redis', () => ({
   redisClient: { set: jest.fn().mockResolvedValue('OK') },
 }));
 
-const { redisClient } = require('../../../config/redis');
+const { redisClient } = require('../../src/config/redis');
 
 jest.mock('bcryptjs');
 jest.mock('jsonwebtoken');
@@ -530,6 +530,16 @@ describe('authService.changePassword', () => {
     userRepository.findById.mockResolvedValue({ ...USUARIO_DB, locked_until: BLOQUEADO_HASTA });
 
     await expect(authService.changePassword('user-uuid-1', INPUT_VALIDO)).rejects.toMatchObject({ statusCode: 423 });
+  });
+
+  it('resetea el contador de intentos cuando el bloqueo ya expiró (bug fix)', async () => {
+    const bloqueadoHaceRato = new Date(Date.now() - 60 * 1000); // expiró hace 1 min
+    userRepository.findById.mockResolvedValue({ ...USUARIO_DB, locked_until: bloqueadoHaceRato });
+    userRepository.resetFailedAttempts.mockResolvedValue();
+
+    await authService.changePassword('user-uuid-1', INPUT_VALIDO);
+
+    expect(userRepository.resetFailedAttempts).toHaveBeenCalledWith('user-uuid-1');
   });
 
   it('lanza error 401 si la contraseña actual es incorrecta', async () => {

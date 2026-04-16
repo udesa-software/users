@@ -26,7 +26,16 @@ jobs:
         run: npm install
 
       - name: Run unit tests
-        run: npm run test
+        run: npm run test:coverage
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: udesa-software/users
+          files: ./coverage/lcov.info
+          flags: unit
+          fail_ci_if_error: true
 
       - name: Test summary
         if: always()
@@ -37,6 +46,6 @@ jobs:
               .addHeading('Test Results')
               .addTable([
                 [{data: 'Step', header: true}, {data: 'Status', header: true}],
-                ['Unit tests (npm run test)', '${{ job.status }}']
+                ['Unit tests (npm run test:coverage)', '${{ job.status }}']
               ])
               .write()
