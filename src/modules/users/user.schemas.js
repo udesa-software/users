@@ -29,11 +29,6 @@ const registerSchema = z.object({
     .boolean({ required_error: 'Leer y aceptar los Términos y Condiciones y la Política de Privacidad es obligatorio' }),
 });
 
-const resendVerificationSchema = z.object({
-  email: z
-    .string({ required_error: 'El email es obligatorio' })
-    .email('El formato del email no es válido'),
-});
 
 // CA.3: solo pide contraseña como confirmación — el usuario se identifica por JWT
 const deleteSchema = z.object({
@@ -80,7 +75,6 @@ const updateProfileSchema = z
 
 module.exports = {
   registerSchema,
-  resendVerificationSchema,
   deleteSchema,
   updatePreferencesSchema,
   updateProfileSchema,

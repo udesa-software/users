@@ -2,10 +2,25 @@ const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { userRepository } = require('../users/user.repository');
-const { sendResetPasswordEmail, sendPasswordChangedEmail } = require('../../config/mailer');
+const { sendResetPasswordEmail, sendPasswordChangedEmail, sendVerificationEmail } = require('../../config/mailer');
 const { AppError } = require('../../middlewares/errorHandler');
 const { env } = require('../../config/env');
+const { redisClient } = require('../../config/redis');
 
+const REVOKED_TTL_SEC = 15 * 60; // matches AT lifetime
+
+function publishRevocation(userId, newTokenVersion) {
+  redisClient.set(`revoked:${userId}`, newTokenVersion, 'EX', REVOKED_TTL_SEC)
+    .catch((err) => console.error('[Redis] failed to publish revocation:', err));
+}
+
+const TOKEN_EXPIRY_HOURS = 24;
+
+function tokenExpiresAt() {
+  const date = new Date();
+  date.setHours(date.getHours() + TOKEN_EXPIRY_HOURS);
+  return date;
+}
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 const authService = {
@@ -133,9 +148,10 @@ const authService = {
 
     // CA.5: hash new password, clear token, increment token_version (CA.7)
     const newPasswordHash = await bcrypt.hash(password, 12);
-    await userRepository.updatePasswordAndInvalidateResetToken(user.id, newPasswordHash);
+    const { token_version } = await userRepository.updatePasswordAndInvalidateResetToken(user.id, newPasswordHash);
     // CA.7: revocar todas las sesiones activas (H5)
     await userRepository.deleteAllRefreshTokensForUser(user.id);
+    publishRevocation(user.id, token_version);
 
     return { message: 'Tu contraseña ha sido actualizada con éxito. Por favor, iniciá sesión de nuevo.' };
   },
@@ -174,7 +190,8 @@ const authService = {
       await userRepository.deleteRefreshToken(refreshToken);
     }
     // Invalida el access token actual inmediatamente (H3 CA.1)
-    await userRepository.incrementTokenVersion(userId);
+    const { token_version } = await userRepository.incrementTokenVersion(userId);
+    publishRevocation(userId, token_version);
     return { message: 'Sesión cerrada exitosamente.' };
   },
 
@@ -224,9 +241,10 @@ const authService = {
 
     // Success: update password (token_version++), reset attempts, revocar todas las sesiones
     const newPasswordHash = await bcrypt.hash(newPassword, 12);
-    await userRepository.updatePasswordAndInvalidateResetToken(user.id, newPasswordHash);
+    const { token_version } = await userRepository.updatePasswordAndInvalidateResetToken(user.id, newPasswordHash);
     await userRepository.deleteAllRefreshTokensForUser(user.id);
     await userRepository.resetFailedAttempts(user.id);
+    publishRevocation(user.id, token_version);
 
     // CA.5: Send email notification
     sendPasswordChangedEmail(user.email).catch((err) =>
@@ -234,6 +252,40 @@ const authService = {
     );
 
     return { message: 'Tu contraseña ha sido cambiada con éxito. Por seguridad, se han cerrado todas tus sesiones activas.' };
+  },
+
+  async verifyEmail(token) {
+    if (!token) {
+      throw new AppError(400, 'Token requerido');
+    }
+    // CA.6: token must exist and not be expired
+    const user = await userRepository.findByVerifyToken(token);
+    if (!user) {
+      throw new AppError(400, 'El token es inválido o ha expirado');
+    }
+
+    await userRepository.markVerified(user.id);
+  },
+
+  async resendVerification(email) {
+    const user = await userRepository.findByEmail(email.toLowerCase());
+    if (!user) {
+      throw new AppError(404, 'No existe una cuenta con ese email');
+    }
+
+    if (user.is_verified) {
+      throw new AppError(400, 'La cuenta ya fue verificada');
+    }
+
+    // CA.6: fresh token with new 24h window
+    const newToken = uuidv4();
+    const newExpiresAt = tokenExpiresAt();
+
+    await userRepository.updateVerifyToken(user.id, newToken, newExpiresAt);
+
+    sendVerificationEmail(email.toLowerCase(), newToken).catch((err) =>
+      console.error('Failed to resend verification email:', err)
+    );
   },
 };
 

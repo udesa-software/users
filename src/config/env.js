@@ -24,6 +24,14 @@ const envSchema = z.object({
   ACCESS_TOKEN_EXPIRES_IN: z.string().default('15m'),
   REFRESH_TOKEN_EXPIRES_IN: z.string().default('7d'),
 
+  ALLOWED_EMAIL_DOMAIN: z.string().optional(), // ej: "udesa.edu.ar"
+
+  INITIAL_SUPERADMIN_EMAIL: z.string().email().optional(),
+  INITIAL_SUPERADMIN_TEMP_PASSWORD: z.string().optional(),
+  
+  MOBILE_DEEP_LINK_URL: z.string().optional(),
+  MOBILE_RESET_PASSWORD_URL: z.string().optional(),
+
   // URL del servicio de friends (H4 CA.2/CA.4: eliminar relaciones al borrar cuenta)
   FRIENDS_SERVICE_URL: z.string().url().optional(),
 });
