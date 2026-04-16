@@ -118,6 +118,31 @@ const userService = {
     return updates;
   },
 
+  async verifyEmail(token) {
+    const user = await userRepository.findByVerifyToken(token);
+    if (!user) {
+      throw new AppError(400, 'Token inválido o expirado');
+    }
+    await userRepository.markVerified(user.id);
+  },
+
+  async resendVerification(email) {
+    const normalizedEmail = email.toLowerCase();
+    const user = await userRepository.findByEmail(normalizedEmail);
+    if (!user) {
+      throw new AppError(404, 'Email no registrado');
+    }
+    if (user.is_verified) {
+      throw new AppError(400, 'La cuenta ya está verificada');
+    }
+    const newToken = uuidv4();
+    const expiresAt = tokenExpiresAt();
+    await userRepository.updateVerifyToken(user.id, newToken, expiresAt);
+    sendVerificationEmail(normalizedEmail, newToken).catch((err) =>
+      console.error('Failed to send verification email:', err)
+    );
+  },
+
   async updateProfile(userId, { username, biography }) {
     const user = await userRepository.findById(userId);
     if (!user) {

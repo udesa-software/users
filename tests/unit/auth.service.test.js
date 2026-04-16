@@ -37,11 +37,11 @@ jest.mock('../../src/config/env', () => ({
   env: { JWT_SECRET: 'test-secret', ACCESS_TOKEN_EXPIRES_IN: '15m', REFRESH_TOKEN_EXPIRES_IN: '7d' },
 }));
 
-jest.mock('../../../config/redis', () => ({
+jest.mock('../../src/config/redis', () => ({
   redisClient: { set: jest.fn().mockResolvedValue('OK') },
 }));
 
-const { redisClient } = require('../../../config/redis');
+const { redisClient } = require('../../src/config/redis');
 
 jest.mock('bcryptjs');
 jest.mock('jsonwebtoken');
