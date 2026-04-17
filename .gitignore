@@ -2,6 +2,10 @@ node_modules/
 dist/
 .env
 
+# Coverage reports
+coverage/
+coverage-integration/
+
 # Compiled class file
 *.class
 

@@ -13,6 +13,21 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: users_db
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: secret
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U admin -d users_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -37,6 +52,24 @@ jobs:
           flags: unit
           fail_ci_if_error: true
 
+      - name: Run integration tests
+        run: npm run test:integration:coverage
+        env:
+          TEST_DB_HOST: localhost
+          TEST_DB_PORT: 5433
+          TEST_DB_NAME: users_db
+          TEST_DB_USER: admin
+          TEST_DB_PASSWORD: secret
+
+      - name: Upload integration coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: udesa-software/users
+          files: ./coverage-integration/lcov.info
+          flags: integration
+          fail_ci_if_error: true
+
       - name: Test summary
         if: always()
         uses: actions/github-script@v8
@@ -46,6 +79,7 @@ jobs:
               .addHeading('Test Results')
               .addTable([
                 [{data: 'Step', header: true}, {data: 'Status', header: true}],
-                ['Unit tests (npm run test:coverage)', '${{ job.status }}']
+                ['Unit tests (npm run test:coverage)', '${{ job.status }}'],
+                ['Integration tests (npm run test:integration)', '${{ job.status }}']
               ])
               .write()
