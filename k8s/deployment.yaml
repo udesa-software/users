@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: users
+  namespace: udesamigos
+  labels:
+    app: users
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: users
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: users
+    spec:
+      containers:
+        - name: users
+          image: <ECR_URI>/udesamigos/users:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: users-config
+          env:
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: DB_HOST
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: DB_NAME
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: DB_PASSWORD
+            - name: DB_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: DB_ADMIN_USER
+            - name: DB_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: DB_ADMIN_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: JWT_SECRET
+            - name: SMTP_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: SMTP_HOST
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: SMTP_USER
+            - name: SMTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: SMTP_PASS
+            - name: INITIAL_SUPERADMIN_TEMP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: INITIAL_SUPERADMIN_TEMP_PASSWORD
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            # users puede tardar más en arrancar si hay migraciones de DB al inicio
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
