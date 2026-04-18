@@ -2,35 +2,17 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: users-config
-  namespace: udesamigos
+  namespace: group-3
 data:
-  # users ya tiene PORT=3000 como default, pero lo declaramos explícitamente
-  # para que quede documentado y sea consistente con todos los demás servicios.
   PORT: "3000"
   DB_PORT: "5432"
-
-  # Tiempos de expiración de tokens JWT (no son secretos, son config de comportamiento)
   JWT_EXPIRES_IN: "7d"
   ACCESS_TOKEN_EXPIRES_IN: "15m"
   REFRESH_TOKEN_EXPIRES_IN: "7d"
-
-  # URL pública del frontend para generar links en emails (ej: verificación de cuenta,
-  # reset de contraseña). Ajustar al subdominio del equipo.
-  APP_URL: "https://g1.tds-linar.udesa.edu.ar"
-
-  # Deep link de la app mobile para reset de contraseña
-  MOBILE_RESET_PASSWORD_URL: "exp://g1.tds-linar.udesa.edu.ar/--/ResetPassword"
-
-  # Solo los emails de este dominio pueden registrarse (dejar vacío para no restringir)
+  APP_URL: "https://g3.tds-linar.udesa.edu.ar"
+  MOBILE_RESET_PASSWORD_URL: "exp://g3.tds-linar.udesa.edu.ar/--/ResetPassword"
   ALLOWED_EMAIL_DOMAIN: "udesa.edu.ar"
-
-  # Email del superadmin inicial (solo se usa si la tabla admins está vacía al arrancar)
   INITIAL_SUPERADMIN_EMAIL: "admin@udesa.edu.ar"
-
-  # Configuración de SMTP no sensible (host y puerto)
   SMTP_PORT: "587"
   SMTP_FROM: "noreply@udesa.edu.ar"
-
-  # URL del servicio de friends dentro del cluster.
-  # users lo usa para eliminar relaciones cuando una cuenta se borra.
   FRIENDS_SERVICE_URL: "http://friends:3000"

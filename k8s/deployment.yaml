@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: users
-  namespace: udesamigos
+  namespace: group-3
   labels:
     app: users
 spec:
@@ -86,7 +86,6 @@ spec:
             httpGet:
               path: /health
               port: 3000
-            # users puede tardar más en arrancar si hay migraciones de DB al inicio
             initialDelaySeconds: 40
             periodSeconds: 10
             failureThreshold: 3
