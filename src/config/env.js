@@ -8,8 +8,6 @@ const envSchema = z.object({
   DB_NAME: z.string(),
   DB_USER: z.string(),
   DB_PASSWORD: z.string(),
-  DB_ADMIN_USER: z.string().optional(),
-  DB_ADMIN_PASSWORD: z.string().optional(),
 
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.string().default('587'),

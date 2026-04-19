@@ -1,22 +1,27 @@
 const { Pool } = require('pg');
 const { env } = require('./env');
 
-// Pool privilegiado para migraciones (CREATE TABLE, GRANT, etc.)
+const SSL_CONFIG = { rejectUnauthorized: false };
+
+// Pool privilegiado para migraciones (CREATE TABLE, etc.)
+// En Supabase se usa el mismo usuario para todo
 const migrationPool = new Pool({
   host: env.DB_HOST,
   port: parseInt(env.DB_PORT, 10),
   database: env.DB_NAME,
-  user: env.DB_ADMIN_USER || env.DB_USER,
-  password: env.DB_ADMIN_PASSWORD || env.DB_PASSWORD,
+  user: env.DB_USER,
+  password: env.DB_PASSWORD,
+  ssl: SSL_CONFIG,
 });
 
-// Pool de la app con privilegios limitados (SELECT, INSERT, UPDATE, DELETE)
+// Pool de la app (SELECT, INSERT, UPDATE, DELETE)
 const pool = new Pool({
   host: env.DB_HOST,
   port: parseInt(env.DB_PORT, 10),
   database: env.DB_NAME,
   user: env.DB_USER,
   password: env.DB_PASSWORD,
+  ssl: SSL_CONFIG,
 });
 
 async function query(text, params) {
