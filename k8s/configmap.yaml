@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: users-config
+  namespace: group-3
+data:
+  PORT: "3000"
+  DB_PORT: "5432"
+  JWT_EXPIRES_IN: "7d"
+  ACCESS_TOKEN_EXPIRES_IN: "15m"
+  REFRESH_TOKEN_EXPIRES_IN: "7d"
+  APP_URL: "https://g3.tds-linar.udesa.edu.ar"
+  MOBILE_RESET_PASSWORD_URL: "exp://g3.tds-linar.udesa.edu.ar/--/ResetPassword"
+  ALLOWED_EMAIL_DOMAIN: "udesa.edu.ar"
+  INITIAL_SUPERADMIN_EMAIL: "admin@udesa.edu.ar"
+  SMTP_PORT: "587"
+  SMTP_FROM: "noreply@udesa.edu.ar"
+  FRIENDS_SERVICE_URL: "http://friends:3000"

@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .env
+k8s/secret.yaml
 
 # Compiled class file
 *.class
