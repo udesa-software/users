@@ -66,9 +66,7 @@ const authService = {
 
     // Login exitoso: resetea el contador de intentos fallidos y registra last_login_at (H9 CA.1)
     await userRepository.resetFailedAttempts(user.id);
-    userRepository.updateLastLogin(user.id).catch((err) =>
-      console.error('[auth] failed to update last_login_at:', err)
-    );
+    await userRepository.updateLastLogin(user.id);
 
     // CA.1: access token JWT (corta duración)
     const accessToken = jwt.sign(
