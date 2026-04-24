@@ -242,6 +242,105 @@ const userRepository = {
     await query(`DELETE FROM user_refresh_tokens WHERE user_id = $1`, [userId]);
   },
 
+  // H9 CA.1: actualiza last_login_at al iniciar sesión exitosamente
+  async updateLastLogin(userId) {
+    await query(
+      `UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1`,
+      [userId]
+    );
+  },
+
+  // H4: búsqueda de usuarios con soporte de coincidencias parciales y paginación
+  async searchUsers({ search = '', page = 1, limit = 20 }) {
+    const offset = (page - 1) * limit;
+    const pattern = `%${search}%`;
+    const result = await query(
+      `SELECT u.id, u.username, u.email, u.is_verified, u.is_suspended,
+              u.deleted_at, u.created_at, u.last_login_at,
+              u.failed_login_attempts, u.locked_until
+       FROM users u
+       WHERE (u.username ILIKE $1 OR u.email ILIKE $1)
+       ORDER BY u.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [pattern, limit, offset]
+    );
+    const countResult = await query(
+      `SELECT COUNT(*) FROM users WHERE username ILIKE $1 OR email ILIKE $1`,
+      [pattern]
+    );
+    return {
+      users: result.rows,
+      total: parseInt(countResult.rows[0].count, 10),
+      page,
+      limit,
+    };
+  },
+
+  // H4 CA.1: detalle completo de un usuario para el panel de admin
+  async getUserDetail(userId) {
+    const result = await query(
+      `SELECT u.id, u.username, u.email, u.is_verified, u.is_suspended,
+              u.deleted_at, u.created_at, u.last_login_at,
+              u.failed_login_attempts, u.locked_until,
+              p.biography, p.search_radius_km, p.location_update_frequency
+       FROM users u
+       LEFT JOIN preferences p ON p.user_id = u.id
+       WHERE u.id = $1`,
+      [userId]
+    );
+    return result.rows[0] ?? null;
+  },
+
+  // H5: suspender usuario — invalida sesión inmediatamente (CA.2)
+  async suspendUser(userId) {
+    const result = await query(
+      `UPDATE users
+       SET is_suspended = TRUE,
+           token_version = token_version + 1,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING token_version`,
+      [userId]
+    );
+    return result.rows[0] ?? null;
+  },
+
+  async unsuspendUser(userId) {
+    await query(
+      `UPDATE users SET is_suspended = FALSE, updated_at = NOW() WHERE id = $1`,
+      [userId]
+    );
+  },
+
+  // H3: métricas para el dashboard (totales, altas del mes, últimos 7 días)
+  async getMetrics() {
+    const [totals, weekly] = await Promise.all([
+      query(`
+        SELECT
+          COUNT(*) AS total_users,
+          COUNT(*) FILTER (WHERE created_at >= date_trunc('month', NOW())) AS new_this_month,
+          COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days') AS new_this_week,
+          COUNT(*) FILTER (WHERE is_suspended = TRUE) AS suspended_users,
+          COUNT(*) FILTER (WHERE deleted_at IS NOT NULL) AS deleted_users,
+          COUNT(*) FILTER (WHERE last_login_at >= NOW() - INTERVAL '15 minutes') AS online_now
+        FROM users
+      `),
+      query(`
+        SELECT
+          DATE_TRUNC('day', created_at)::DATE AS day,
+          COUNT(*) AS count
+        FROM users
+        WHERE created_at >= NOW() - INTERVAL '7 days'
+        GROUP BY day
+        ORDER BY day ASC
+      `),
+    ]);
+    return {
+      ...totals.rows[0],
+      weekly_registrations: weekly.rows,
+    };
+  },
+
   // H6: obtiene el perfil público del usuario (username + biography)
   async findProfileById(userId) {
     const result = await query(

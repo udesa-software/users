@@ -20,6 +20,7 @@ jest.mock('../../src/modules/users/user.repository', () => ({
     findByVerifyToken: jest.fn(),
     markVerified: jest.fn(),
     updateVerifyToken: jest.fn(),
+    updateLastLogin: jest.fn(),
     createRefreshToken: jest.fn(),
     rotateRefreshToken: jest.fn(),
     deleteRefreshToken: jest.fn(),
@@ -76,6 +77,7 @@ describe('authService.login', () => {
     userRepository.resetFailedAttempts.mockResolvedValue();
     userRepository.incrementFailedAttempts.mockResolvedValue();
     userRepository.createRefreshToken.mockResolvedValue();
+    userRepository.updateLastLogin.mockResolvedValue();
   });
 
   it('devuelve accessToken, refreshToken y datos del usuario cuando las credenciales son correctas', async () => {
