@@ -251,22 +251,46 @@ const userRepository = {
   },
 
   // H4: búsqueda de usuarios con soporte de coincidencias parciales y paginación
-  async searchUsers({ search = '', page = 1, limit = 20 }) {
+  async searchUsers({ search = '', page = 1, limit = 20, excludeId = null, onlyActive = false }) {
     const offset = (page - 1) * limit;
     const pattern = `%${search}%`;
+    
+    let whereClause = '(u.username ILIKE $1 OR u.email ILIKE $1)';
+    const params = [pattern, limit, offset];
+    
+    if (excludeId) {
+      params.push(excludeId);
+      whereClause += ` AND u.id != $${params.length}`;
+    }
+
+    if (onlyActive) {
+      whereClause += ' AND u.deleted_at IS NULL';
+    }
+
     const result = await query(
       `SELECT u.id, u.username, u.email, u.is_verified, u.is_suspended,
               u.deleted_at, u.created_at, u.last_login_at,
               u.failed_login_attempts, u.locked_until
        FROM users u
-       WHERE (u.username ILIKE $1 OR u.email ILIKE $1)
+       WHERE ${whereClause}
        ORDER BY u.created_at DESC
        LIMIT $2 OFFSET $3`,
-      [pattern, limit, offset]
+      params
     );
+
+    const countParams = [pattern];
+    let countWhere = '(username ILIKE $1 OR email ILIKE $1)';
+    if (excludeId) {
+      countParams.push(excludeId);
+      countWhere += ` AND id != $${countParams.length}`;
+    }
+    if (onlyActive) {
+      countWhere += ' AND deleted_at IS NULL';
+    }
+
     const countResult = await query(
-      `SELECT COUNT(*) FROM users WHERE username ILIKE $1 OR email ILIKE $1`,
-      [pattern]
+      `SELECT COUNT(*) FROM users WHERE ${countWhere}`,
+      countParams
     );
     return {
       users: result.rows,
