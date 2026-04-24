@@ -1,0 +1,12 @@
+const { Router } = require('express');
+const { internalController } = require('./internal.controller');
+
+const router = Router();
+
+router.get('/users', internalController.listUsers);
+router.get('/users/:id', internalController.getUser);
+router.post('/users/:id/suspend', internalController.suspendUser);
+router.post('/users/:id/unsuspend', internalController.unsuspendUser);
+router.get('/metrics', internalController.getMetrics);
+
+module.exports = router;
