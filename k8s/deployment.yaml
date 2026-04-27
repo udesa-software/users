@@ -11,7 +11,7 @@ spec:
     matchLabels:
       app: users
   strategy:
-    type: RollingUpdate
+    type: Recreate
   template:
     metadata:
       labels:

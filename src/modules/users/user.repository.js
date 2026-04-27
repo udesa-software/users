@@ -344,7 +344,7 @@ const userRepository = {
   // H6: obtiene el perfil público del usuario (username + biography)
   async findProfileById(userId) {
     const result = await query(
-      `SELECT u.id, u.username, u.email, p.biography
+      `SELECT u.id, u.username, u.email, u.role_ as "role", p.biography
        FROM users u
        LEFT JOIN preferences p ON p.user_id = u.id
        WHERE u.id = $1`,
