@@ -80,6 +80,9 @@ const authService = {
     const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
     await userRepository.createRefreshToken(user.id, refreshToken, refreshExpiresAt);
 
+    // H6: Fetch full profile to get biography
+    const userProfile = await userRepository.findProfileById(user.id);
+
     return {
       accessToken,
       refreshToken,
@@ -89,6 +92,8 @@ const authService = {
         email: user.email,
         is_verified: user.is_verified,
         created_at: user.created_at,
+        role: userProfile ? userProfile.role : 'user',
+        biography: userProfile ? userProfile.biography : null,
       },
     };
   },
