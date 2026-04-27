@@ -12,7 +12,6 @@ data:
   APP_URL: "https://tds-group-3.tds-linar.udesa.edu.ar"
   MOBILE_RESET_PASSWORD_URL: "exp://tds-group-3.tds-linar.udesa.edu.ar/--/ResetPassword"
   ALLOWED_EMAIL_DOMAIN: "udesa.edu.ar"
-  INITIAL_SUPERADMIN_EMAIL: "admin@udesa.edu.ar"
   SMTP_PORT: "587"
   SMTP_FROM: "noreply@udesa.edu.ar"
   FRIENDS_SERVICE_URL: "http://friends:3000"
