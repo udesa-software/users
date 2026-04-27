@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: users-config
-  namespace: group-3
+  namespace: tds-group-3
 data:
   PORT: "3000"
   DB_PORT: "5432"
