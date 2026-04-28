@@ -77,11 +77,6 @@ spec:
                 secretKeyRef:
                   name: users-secret
                   key: SMTP_PASS
-            - name: INITIAL_SUPERADMIN_TEMP_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: users-secret
-                  key: INITIAL_SUPERADMIN_TEMP_PASSWORD
           livenessProbe:
             httpGet:
               path: /health
