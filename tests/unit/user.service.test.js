@@ -1,7 +1,9 @@
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const { userService } = require('../../src/modules/users/user.service');
+const { internalController } = require('../../src/modules/users/internal.controller');
 const { userRepository } = require('../../src/modules/users/user.repository');
+const { AppError: AppErrorInternal } = require('../../src/middlewares/errorHandler');
 const { sendVerificationEmail } = require('../../src/config/mailer');
 const { AppError } = require('../../src/middlewares/errorHandler');
 const { friendsClient } = require('../../src/clients/friendsClient');
@@ -17,6 +19,7 @@ jest.mock('../../src/modules/users/user.repository', () => ({
     findByVerifyToken: jest.fn(),
     findById: jest.fn(),
     findProfileById: jest.fn(),
+    findProfilesByIds: jest.fn(),
     create: jest.fn(),
     markVerified: jest.fn(),
     updateVerifyToken: jest.fn(),
@@ -27,6 +30,10 @@ jest.mock('../../src/modules/users/user.repository', () => ({
     updateUsername: jest.fn(),
     updateBiography: jest.fn(),
   },
+}));
+
+jest.mock('../../src/config/redis', () => ({
+  redisClient: { set: jest.fn() },
 }));
 
 jest.mock('../../src/config/mailer', () => ({
@@ -532,5 +539,110 @@ describe('userService.updateProfile', () => {
     await userService.updateProfile(USER_ID, { biography: '<b></b>' });
 
     expect(userRepository.updateBiography).toHaveBeenCalledWith(USER_ID, '');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H5-friends: internalController.getBatchProfiles — endpoint interno para location service
+// ---------------------------------------------------------------------------
+describe('internalController.getBatchProfiles', () => {
+  const USER_A = { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', username: 'alice' };
+  const USER_B = { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', username: 'bob' };
+
+  const makeReq = (body = {}) => ({ body, params: {}, query: {} });
+  const makeRes = () => {
+    const res = {};
+    res.json = jest.fn().mockReturnValue(res);
+    res.status = jest.fn().mockReturnValue(res);
+    return res;
+  };
+  const makeNext = () => jest.fn();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('llama a findProfilesByIds con los userIds del body', async () => {
+    userRepository.findProfilesByIds.mockResolvedValue([USER_A, USER_B]);
+    const req = makeReq({ userIds: [USER_A.id, USER_B.id] });
+    const res = makeRes();
+
+    await internalController.getBatchProfiles(req, res, makeNext());
+
+    expect(userRepository.findProfilesByIds).toHaveBeenCalledWith([USER_A.id, USER_B.id]);
+  });
+
+  it('responde con { users: [...] } con los perfiles encontrados', async () => {
+    userRepository.findProfilesByIds.mockResolvedValue([USER_A, USER_B]);
+    const req = makeReq({ userIds: [USER_A.id, USER_B.id] });
+    const res = makeRes();
+
+    await internalController.getBatchProfiles(req, res, makeNext());
+
+    expect(res.json).toHaveBeenCalledWith({ users: [USER_A, USER_B] });
+  });
+
+  it('responde con { users: [] } si no se encuentran perfiles', async () => {
+    userRepository.findProfilesByIds.mockResolvedValue([]);
+    const req = makeReq({ userIds: ['no-existe-uuid'] });
+    const res = makeRes();
+
+    await internalController.getBatchProfiles(req, res, makeNext());
+
+    expect(res.json).toHaveBeenCalledWith({ users: [] });
+  });
+
+  it('responde con { users: [] } si userIds es un array vacío', async () => {
+    userRepository.findProfilesByIds.mockResolvedValue([]);
+    const req = makeReq({ userIds: [] });
+    const res = makeRes();
+
+    await internalController.getBatchProfiles(req, res, makeNext());
+
+    expect(res.json).toHaveBeenCalledWith({ users: [] });
+  });
+
+  it('llama a next con AppError 400 si userIds no es un array', async () => {
+    const req = makeReq({ userIds: 'no-soy-array' });
+    const res = makeRes();
+    const next = makeNext();
+
+    await internalController.getBatchProfiles(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.any(AppErrorInternal));
+    expect(next.mock.calls[0][0].statusCode).toBe(400);
+    expect(userRepository.findProfilesByIds).not.toHaveBeenCalled();
+  });
+
+  it('llama a next con AppError 400 si userIds es undefined', async () => {
+    const req = makeReq({});
+    const res = makeRes();
+    const next = makeNext();
+
+    await internalController.getBatchProfiles(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.any(AppErrorInternal));
+    expect(next.mock.calls[0][0].statusCode).toBe(400);
+  });
+
+  it('no llama a res.json si userIds es inválido', async () => {
+    const req = makeReq({ userIds: 123 });
+    const res = makeRes();
+
+    await internalController.getBatchProfiles(req, res, makeNext());
+
+    expect(res.json).not.toHaveBeenCalled();
+  });
+
+  it('llama a next si el repository lanza un error inesperado', async () => {
+    userRepository.findProfilesByIds.mockRejectedValue(new Error('DB error'));
+    const req = makeReq({ userIds: [USER_A.id] });
+    const res = makeRes();
+    const next = makeNext();
+
+    await internalController.getBatchProfiles(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.any(Error));
+    expect(res.json).not.toHaveBeenCalled();
   });
 });

@@ -67,6 +67,20 @@ const internalController = {
     }
   },
 
+  // H5-friends: devuelve username de un batch de userIds (para el radar de descubrimiento en location)
+  async getBatchProfiles(req, res, next) {
+    try {
+      const { userIds } = req.body;
+      if (!Array.isArray(userIds)) {
+        throw new AppError(400, 'userIds debe ser un array');
+      }
+      const users = await userRepository.findProfilesByIds(userIds);
+      res.json({ users });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   // H3: métricas para el dashboard del backoffice
   async getMetrics(req, res, next) {
     try {

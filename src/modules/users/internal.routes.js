@@ -3,6 +3,7 @@ const { internalController } = require('./internal.controller');
 
 const router = Router();
 
+router.post('/users/profiles', internalController.getBatchProfiles);
 router.get('/users', internalController.listUsers);
 router.get('/users/:id', internalController.getUser);
 router.post('/users/:id/suspend', internalController.suspendUser);

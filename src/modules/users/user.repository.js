@@ -341,6 +341,19 @@ const userRepository = {
     };
   },
 
+  // H5-friends: batch lookup de perfiles por IDs (para radar de descubrimiento)
+  async findProfilesByIds(userIds) {
+    if (!userIds.length) return [];
+    const result = await query(
+      `SELECT id, username FROM users
+       WHERE id = ANY($1::uuid[])
+         AND deleted_at IS NULL
+         AND is_suspended = FALSE`,
+      [userIds]
+    );
+    return result.rows;
+  },
+
   // H6: obtiene el perfil público del usuario (username + biography)
   async findProfileById(userId) {
     const result = await query(
