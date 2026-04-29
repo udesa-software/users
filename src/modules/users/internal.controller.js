@@ -67,6 +67,44 @@ const internalController = {
     }
   },
 
+  // H5-friends: devuelve username de un batch de userIds (para el radar de descubrimiento en location)
+  async getBatchProfiles(req, res, next) {
+    try {
+      const { userIds } = req.body;
+      if (!Array.isArray(userIds)) {
+        throw new AppError(400, 'userIds debe ser un array');
+      }
+      const users = await userRepository.findProfilesByIds(userIds);
+      res.json({ users });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // H5-friends: sincroniza el flag is_private desde location service
+  async updatePrivacy(req, res, next) {
+    try {
+      const { isPrivate } = req.body;
+      if (typeof isPrivate !== 'boolean') {
+        return next(new AppError(400, 'isPrivate debe ser un booleano'));
+      }
+      await userRepository.updatePrivacy(req.params.id, isPrivate);
+      res.json({ message: 'Privacidad actualizada' });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // H6: devuelve las preferencias de un usuario (usado por location service para el radar)
+  async getPreferences(req, res, next) {
+    try {
+      const prefs = await userRepository.getPreferences(req.params.id);
+      res.json(prefs ?? { search_radius_km: 25, location_update_frequency: 5 });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   // H3: métricas para el dashboard del backoffice
   async getMetrics(req, res, next) {
     try {

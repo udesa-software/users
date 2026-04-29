@@ -44,6 +44,17 @@ const userController = {
       next(err);
     }
   },
+  // H1 E.2: GET /api/users/search — buscador de usuarios públicos para la app móvil
+  async searchUsers(req, res, next) {
+    try {
+      const { q = '', page = 1, limit = 20 } = req.query;
+      const result = await userService.searchUsers(req.user.sub, { q, page, limit });
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+
   // H6: PATCH /api/users/profile
   async updateProfile(req, res, next) {
     try {
@@ -55,7 +66,7 @@ const userController = {
     }
   },
 
-  async searchUsers(req, res, next) {
+  async searchUsersPublic(req, res, next) {
     try {
       const { username } = req.query;
       const users = await userService.searchUsersPublic(username, req.user.sub);

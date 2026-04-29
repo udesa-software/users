@@ -1,7 +1,9 @@
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const { userService } = require('../../src/modules/users/user.service');
+const { internalController } = require('../../src/modules/users/internal.controller');
 const { userRepository } = require('../../src/modules/users/user.repository');
+const { AppError: AppErrorInternal } = require('../../src/middlewares/errorHandler');
 const { sendVerificationEmail } = require('../../src/config/mailer');
 const { AppError } = require('../../src/middlewares/errorHandler');
 const { friendsClient } = require('../../src/clients/friendsClient');
@@ -17,6 +19,7 @@ jest.mock('../../src/modules/users/user.repository', () => ({
     findByVerifyToken: jest.fn(),
     findById: jest.fn(),
     findProfileById: jest.fn(),
+    findProfilesByIds: jest.fn(),
     create: jest.fn(),
     markVerified: jest.fn(),
     updateVerifyToken: jest.fn(),
@@ -26,8 +29,14 @@ jest.mock('../../src/modules/users/user.repository', () => ({
     getPreferences: jest.fn(),
     updateUsername: jest.fn(),
     updateBiography: jest.fn(),
+    updatePrivacy: jest.fn(),
+    searchPublicUsers: jest.fn(),
     searchUsers: jest.fn(),
   },
+}));
+
+jest.mock('../../src/config/redis', () => ({
+  redisClient: { set: jest.fn() },
 }));
 
 jest.mock('../../src/config/mailer', () => ({
@@ -536,6 +545,179 @@ describe('userService.updateProfile', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// H5: userService.searchUsers — buscador público (filtra privados)
+// ---------------------------------------------------------------------------
+describe('userService.searchUsers', () => {
+  const REQUESTER_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    userRepository.searchPublicUsers.mockResolvedValue({
+      users: [{ id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', username: 'alice' }],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+  });
+
+  it('delega en searchPublicUsers con los parámetros correctos', async () => {
+    await userService.searchUsers(REQUESTER_ID, { q: 'ali', page: 1, limit: 20 });
+
+    expect(userRepository.searchPublicUsers).toHaveBeenCalledWith({
+      search: 'ali',
+      page: 1,
+      limit: 20,
+      excludeUserId: REQUESTER_ID,
+    });
+  });
+
+  it('devuelve la lista de usuarios públicos encontrados', async () => {
+    const result = await userService.searchUsers(REQUESTER_ID, { q: 'alice' });
+
+    expect(result.users).toHaveLength(1);
+    expect(result.users[0].username).toBe('alice');
+  });
+
+  it('usa q="" por defecto si no se pasa término de búsqueda', async () => {
+    await userService.searchUsers(REQUESTER_ID, {});
+
+    expect(userRepository.searchPublicUsers).toHaveBeenCalledWith(
+      expect.objectContaining({ search: '' })
+    );
+  });
+
+  it('limita el limit a 50 como máximo', async () => {
+    await userService.searchUsers(REQUESTER_ID, { limit: 200 });
+
+    expect(userRepository.searchPublicUsers).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 50 })
+    );
+  });
+
+  it('excluye al propio requester de los resultados (excludeUserId)', async () => {
+    await userService.searchUsers(REQUESTER_ID, { q: 'ali' });
+
+    expect(userRepository.searchPublicUsers).toHaveBeenCalledWith(
+      expect.objectContaining({ excludeUserId: REQUESTER_ID })
+    );
+  });
+
+  it('devuelve lista vacía si no hay resultados', async () => {
+    userRepository.searchPublicUsers.mockResolvedValue({ users: [], total: 0, page: 1, limit: 20 });
+
+    const result = await userService.searchUsers(REQUESTER_ID, { q: 'zzz' });
+
+    expect(result.users).toEqual([]);
+    expect(result.total).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H5-friends: internalController.getBatchProfiles — endpoint interno para location service
+// ---------------------------------------------------------------------------
+describe('internalController.getBatchProfiles', () => {
+  const USER_A = { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', username: 'alice' };
+  const USER_B = { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', username: 'bob' };
+
+  const makeReq = (body = {}) => ({ body, params: {}, query: {} });
+  const makeRes = () => {
+    const res = {};
+    res.json = jest.fn().mockReturnValue(res);
+    res.status = jest.fn().mockReturnValue(res);
+    return res;
+  };
+  const makeNext = () => jest.fn();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('llama a findProfilesByIds con los userIds del body', async () => {
+    userRepository.findProfilesByIds.mockResolvedValue([USER_A, USER_B]);
+    const req = makeReq({ userIds: [USER_A.id, USER_B.id] });
+    const res = makeRes();
+
+    await internalController.getBatchProfiles(req, res, makeNext());
+
+    expect(userRepository.findProfilesByIds).toHaveBeenCalledWith([USER_A.id, USER_B.id]);
+  });
+
+  it('responde con { users: [...] } con los perfiles encontrados', async () => {
+    userRepository.findProfilesByIds.mockResolvedValue([USER_A, USER_B]);
+    const req = makeReq({ userIds: [USER_A.id, USER_B.id] });
+    const res = makeRes();
+
+    await internalController.getBatchProfiles(req, res, makeNext());
+
+    expect(res.json).toHaveBeenCalledWith({ users: [USER_A, USER_B] });
+  });
+
+  it('responde con { users: [] } si no se encuentran perfiles', async () => {
+    userRepository.findProfilesByIds.mockResolvedValue([]);
+    const req = makeReq({ userIds: ['no-existe-uuid'] });
+    const res = makeRes();
+
+    await internalController.getBatchProfiles(req, res, makeNext());
+
+    expect(res.json).toHaveBeenCalledWith({ users: [] });
+  });
+
+  it('responde con { users: [] } si userIds es un array vacío', async () => {
+    userRepository.findProfilesByIds.mockResolvedValue([]);
+    const req = makeReq({ userIds: [] });
+    const res = makeRes();
+
+    await internalController.getBatchProfiles(req, res, makeNext());
+
+    expect(res.json).toHaveBeenCalledWith({ users: [] });
+  });
+
+  it('llama a next con AppError 400 si userIds no es un array', async () => {
+    const req = makeReq({ userIds: 'no-soy-array' });
+    const res = makeRes();
+    const next = makeNext();
+
+    await internalController.getBatchProfiles(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.any(AppErrorInternal));
+    expect(next.mock.calls[0][0].statusCode).toBe(400);
+    expect(userRepository.findProfilesByIds).not.toHaveBeenCalled();
+  });
+
+  it('llama a next con AppError 400 si userIds es undefined', async () => {
+    const req = makeReq({});
+    const res = makeRes();
+    const next = makeNext();
+
+    await internalController.getBatchProfiles(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.any(AppErrorInternal));
+    expect(next.mock.calls[0][0].statusCode).toBe(400);
+  });
+
+  it('no llama a res.json si userIds es inválido', async () => {
+    const req = makeReq({ userIds: 123 });
+    const res = makeRes();
+
+    await internalController.getBatchProfiles(req, res, makeNext());
+
+    expect(res.json).not.toHaveBeenCalled();
+  });
+
+  it('llama a next si el repository lanza un error inesperado', async () => {
+    userRepository.findProfilesByIds.mockRejectedValue(new Error('DB error'));
+    const req = makeReq({ userIds: [USER_A.id] });
+    const res = makeRes();
+    const next = makeNext();
+
+    await internalController.getBatchProfiles(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.any(Error));
+    expect(res.json).not.toHaveBeenCalled();
+  });
+});
+
 describe('userService.searchUsersPublic', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -549,9 +731,9 @@ describe('userService.searchUsersPublic', () => {
 
   it('llama al repositorio con excludeId y onlyActive: true', async () => {
     userRepository.searchUsers.mockResolvedValue({ users: [] });
-    
+
     await userService.searchUsersPublic('test', 'user-uuid-1');
-    
+
     expect(userRepository.searchUsers).toHaveBeenCalledWith({
       search: 'test',
       page: 1,
@@ -570,7 +752,7 @@ describe('userService.searchUsersPublic', () => {
     });
 
     const result = await userService.searchUsersPublic('ma', 'user-uuid-99');
-    
+
     expect(result).toEqual([
       { id: 'uuid-1', username: 'mateo' },
       { id: 'uuid-2', username: 'juan' },

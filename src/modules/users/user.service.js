@@ -179,12 +179,21 @@ const userService = {
     return updates; // CA.6: retorna los nuevos valores para actualizar el estado global
   },
 
+  // H1 E.2: búsqueda de usuarios públicos para la app móvil (no muestra privados)
+  async searchUsers(requesterId, { q = '', page = 1, limit = 20 }) {
+    return userRepository.searchPublicUsers({
+      search: q,
+      page: parseInt(page, 10),
+      limit: Math.min(parseInt(limit, 10), 50),
+      excludeUserId: requesterId,
+    });
+  },
+
   async searchUsersPublic(query, excludeId) {
     if (!query) return [];
-    // We can reuse the repository's search but we map it to return only public data
-    const result = await userRepository.searchUsers({ 
-      search: query, 
-      page: 1, 
+    const result = await userRepository.searchUsers({
+      search: query,
+      page: 1,
       limit: 10,
       excludeId,
       onlyActive: true
