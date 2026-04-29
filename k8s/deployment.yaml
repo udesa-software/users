@@ -67,6 +67,11 @@ spec:
                 secretKeyRef:
                   name: users-secret
                   key: SMTP_HOST
+            - name: SMTP_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: SMTP_PORT
             - name: SMTP_USER
               valueFrom:
                 secretKeyRef:
@@ -77,6 +82,11 @@ spec:
                 secretKeyRef:
                   name: users-secret
                   key: SMTP_PASS
+            - name: SMTP_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: SMTP_FROM
           livenessProbe:
             httpGet:
               path: /health
