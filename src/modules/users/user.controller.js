@@ -65,6 +65,16 @@ const userController = {
       next(err);
     }
   },
+
+  async searchUsersPublic(req, res, next) {
+    try {
+      const { username } = req.query;
+      const users = await userService.searchUsersPublic(username, req.user.sub);
+      res.status(200).json(users);
+    } catch (err) {
+      next(err);
+    }
+  },
 };
 
 module.exports = { userController };

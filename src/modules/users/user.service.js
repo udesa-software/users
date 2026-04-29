@@ -189,6 +189,20 @@ const userService = {
     });
   },
 
+  async searchUsersPublic(query, excludeId) {
+    if (!query) return [];
+    const result = await userRepository.searchUsers({
+      search: query,
+      page: 1,
+      limit: 10,
+      excludeId,
+      onlyActive: true
+    });
+    return result.users.map(u => ({
+      id: u.id,
+      username: u.username
+    }));
+  },
 };
 
 module.exports = { userService };

@@ -31,6 +31,7 @@ jest.mock('../../src/modules/users/user.repository', () => ({
     updateBiography: jest.fn(),
     updatePrivacy: jest.fn(),
     searchPublicUsers: jest.fn(),
+    searchUsers: jest.fn(),
   },
 }));
 
@@ -714,5 +715,47 @@ describe('internalController.getBatchProfiles', () => {
 
     expect(next).toHaveBeenCalledWith(expect.any(Error));
     expect(res.json).not.toHaveBeenCalled();
+  });
+});
+
+describe('userService.searchUsersPublic', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('devuelve un array vacío si la query está vacía', async () => {
+    const result = await userService.searchUsersPublic('', 'user-uuid-1');
+    expect(result).toEqual([]);
+    expect(userRepository.searchUsers).not.toHaveBeenCalled();
+  });
+
+  it('llama al repositorio con excludeId y onlyActive: true', async () => {
+    userRepository.searchUsers.mockResolvedValue({ users: [] });
+
+    await userService.searchUsersPublic('test', 'user-uuid-1');
+
+    expect(userRepository.searchUsers).toHaveBeenCalledWith({
+      search: 'test',
+      page: 1,
+      limit: 10,
+      excludeId: 'user-uuid-1',
+      onlyActive: true,
+    });
+  });
+
+  it('mapea correctamente retornando solo campos públicos', async () => {
+    userRepository.searchUsers.mockResolvedValue({
+      users: [
+        { id: 'uuid-1', username: 'mateo', email: 'hola@test.com', locked_until: 'algo' },
+        { id: 'uuid-2', username: 'juan', email: 'juan@test.com' },
+      ],
+    });
+
+    const result = await userService.searchUsersPublic('ma', 'user-uuid-99');
+
+    expect(result).toEqual([
+      { id: 'uuid-1', username: 'mateo' },
+      { id: 'uuid-2', username: 'juan' },
+    ]);
   });
 });
