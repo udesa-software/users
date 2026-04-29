@@ -354,6 +354,46 @@ const userRepository = {
     return result.rows;
   },
 
+  // H5-friends: sincroniza el flag de modo privado desde location service
+  async updatePrivacy(userId, isPrivate) {
+    await query(
+      `UPDATE users SET is_private = $1, updated_at = NOW() WHERE id = $2`,
+      [isPrivate, userId]
+    );
+  },
+
+  // H1 E.2: búsqueda pública para la app móvil — excluye privados, suspendidos y eliminados
+  async searchPublicUsers({ search = '', page = 1, limit = 20, excludeUserId }) {
+    const offset = (page - 1) * limit;
+    const pattern = `%${search}%`;
+    const result = await query(
+      `SELECT id, username FROM users
+       WHERE username ILIKE $1
+         AND is_private = FALSE
+         AND is_suspended = FALSE
+         AND deleted_at IS NULL
+         AND id != $4
+       ORDER BY username ASC
+       LIMIT $2 OFFSET $3`,
+      [pattern, limit, offset, excludeUserId]
+    );
+    const countResult = await query(
+      `SELECT COUNT(*) FROM users
+       WHERE username ILIKE $1
+         AND is_private = FALSE
+         AND is_suspended = FALSE
+         AND deleted_at IS NULL
+         AND id != $2`,
+      [pattern, excludeUserId]
+    );
+    return {
+      users: result.rows,
+      total: parseInt(countResult.rows[0].count, 10),
+      page,
+      limit,
+    };
+  },
+
   // H6: obtiene el perfil público del usuario (username + biography)
   async findProfileById(userId) {
     const result = await query(

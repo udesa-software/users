@@ -179,6 +179,16 @@ const userService = {
     return updates; // CA.6: retorna los nuevos valores para actualizar el estado global
   },
 
+  // H1 E.2: búsqueda de usuarios públicos para la app móvil (no muestra privados)
+  async searchUsers(requesterId, { q = '', page = 1, limit = 20 }) {
+    return userRepository.searchPublicUsers({
+      search: q,
+      page: parseInt(page, 10),
+      limit: Math.min(parseInt(limit, 10), 50),
+      excludeUserId: requesterId,
+    });
+  },
+
 };
 
 module.exports = { userService };

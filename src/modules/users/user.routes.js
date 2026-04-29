@@ -23,4 +23,7 @@ router.patch(
 
 router.patch('/profile', authenticate, validate(updateProfileSchema), userController.updateProfile);
 
+// H1 E.2: búsqueda de usuarios públicos para agregar amigos (excluye privados)
+router.get('/search', authenticate, userController.searchUsers);
+
 module.exports = router;

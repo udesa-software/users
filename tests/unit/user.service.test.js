@@ -29,6 +29,8 @@ jest.mock('../../src/modules/users/user.repository', () => ({
     getPreferences: jest.fn(),
     updateUsername: jest.fn(),
     updateBiography: jest.fn(),
+    updatePrivacy: jest.fn(),
+    searchPublicUsers: jest.fn(),
   },
 }));
 
@@ -539,6 +541,74 @@ describe('userService.updateProfile', () => {
     await userService.updateProfile(USER_ID, { biography: '<b></b>' });
 
     expect(userRepository.updateBiography).toHaveBeenCalledWith(USER_ID, '');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H5: userService.searchUsers — buscador público (filtra privados)
+// ---------------------------------------------------------------------------
+describe('userService.searchUsers', () => {
+  const REQUESTER_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    userRepository.searchPublicUsers.mockResolvedValue({
+      users: [{ id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', username: 'alice' }],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+  });
+
+  it('delega en searchPublicUsers con los parámetros correctos', async () => {
+    await userService.searchUsers(REQUESTER_ID, { q: 'ali', page: 1, limit: 20 });
+
+    expect(userRepository.searchPublicUsers).toHaveBeenCalledWith({
+      search: 'ali',
+      page: 1,
+      limit: 20,
+      excludeUserId: REQUESTER_ID,
+    });
+  });
+
+  it('devuelve la lista de usuarios públicos encontrados', async () => {
+    const result = await userService.searchUsers(REQUESTER_ID, { q: 'alice' });
+
+    expect(result.users).toHaveLength(1);
+    expect(result.users[0].username).toBe('alice');
+  });
+
+  it('usa q="" por defecto si no se pasa término de búsqueda', async () => {
+    await userService.searchUsers(REQUESTER_ID, {});
+
+    expect(userRepository.searchPublicUsers).toHaveBeenCalledWith(
+      expect.objectContaining({ search: '' })
+    );
+  });
+
+  it('limita el limit a 50 como máximo', async () => {
+    await userService.searchUsers(REQUESTER_ID, { limit: 200 });
+
+    expect(userRepository.searchPublicUsers).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 50 })
+    );
+  });
+
+  it('excluye al propio requester de los resultados (excludeUserId)', async () => {
+    await userService.searchUsers(REQUESTER_ID, { q: 'ali' });
+
+    expect(userRepository.searchPublicUsers).toHaveBeenCalledWith(
+      expect.objectContaining({ excludeUserId: REQUESTER_ID })
+    );
+  });
+
+  it('devuelve lista vacía si no hay resultados', async () => {
+    userRepository.searchPublicUsers.mockResolvedValue({ users: [], total: 0, page: 1, limit: 20 });
+
+    const result = await userService.searchUsers(REQUESTER_ID, { q: 'zzz' });
+
+    expect(result.users).toEqual([]);
+    expect(result.total).toBe(0);
   });
 });
 
