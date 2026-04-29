@@ -23,4 +23,6 @@ router.patch(
 
 router.patch('/profile', authenticate, validate(updateProfileSchema), userController.updateProfile);
 
+router.get('/search', authenticate, userController.searchUsers);
+
 module.exports = router;

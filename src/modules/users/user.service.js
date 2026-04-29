@@ -179,6 +179,21 @@ const userService = {
     return updates; // CA.6: retorna los nuevos valores para actualizar el estado global
   },
 
+  async searchUsersPublic(query, excludeId) {
+    if (!query) return [];
+    // We can reuse the repository's search but we map it to return only public data
+    const result = await userRepository.searchUsers({ 
+      search: query, 
+      page: 1, 
+      limit: 10,
+      excludeId,
+      onlyActive: true
+    });
+    return result.users.map(u => ({
+      id: u.id,
+      username: u.username
+    }));
+  },
 };
 
 module.exports = { userService };
