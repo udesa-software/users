@@ -26,25 +26,32 @@ async function sendVerificationEmail(toEmail, token) {
     return;
   }
 
-  await transporter.sendMail({
-    from: env.SMTP_FROM,
-    to: toEmail,
-    subject: 'Verifica tu cuenta en UdeSA-Migos',
-    html: `
-      <h2>Bienvenido a UdeSA-Migos!</h2>
-      <p>Para activar tu cuenta, hacé click en el siguiente enlace:</p>
-      <a href="${verificationUrl}" style="
-        display: inline-block;
-        padding: 12px 24px;
-        background-color: #4F46E5;
-        color: white;
-        text-decoration: none;
-        border-radius: 6px;
-      ">Verificar cuenta</a>
-      <p>Este enlace expira en <strong>24 horas</strong>.</p>
-      <p>Si no creaste esta cuenta, podés ignorar este email.</p>
-    `,
-  });
+  console.log(`[Mailer] Intentando enviar mail de verificación a: ${toEmail}`);
+  try {
+    const info = await transporter.sendMail({
+      from: env.SMTP_FROM,
+      to: toEmail,
+      subject: 'Verifica tu cuenta en UdeSA-Migos',
+      html: `
+        <h2>Bienvenido a UdeSA-Migos!</h2>
+        <p>Para activar tu cuenta, hacé click en el siguiente enlace:</p>
+        <a href="${verificationUrl}" style="
+          display: inline-block;
+          padding: 12px 24px;
+          background-color: #4F46E5;
+          color: white;
+          text-decoration: none;
+          border-radius: 6px;
+        ">Verificar cuenta</a>
+        <p>Este enlace expira en <strong>24 horas</strong>.</p>
+        <p>Si no creaste esta cuenta, podés ignorar este email.</p>
+      `,
+    });
+    console.log(`[Mailer] Mail enviado con éxito: ${info.messageId}`);
+  } catch (err) {
+    console.error(`[Mailer] Error crítico al enviar mail a ${toEmail}:`, err.message);
+    throw err; // Re-lanzamos para que el catch del service lo vea
+  }
 }
 
 async function sendResetPasswordEmail(toEmail, token) {

@@ -273,10 +273,16 @@ const authService = {
     await userRepository.markVerified(user.id);
   },
 
-  async resendVerification(email) {
-    const user = await userRepository.findByEmail(email.toLowerCase());
+  async resendVerification(identifier) {
+    let user = null;
+    if (identifier.includes('@')) {
+      user = await userRepository.findByEmail(identifier.toLowerCase());
+    } else {
+      user = await userRepository.findByUsername(identifier.toLowerCase());
+    }
+
     if (!user) {
-      throw new AppError(404, 'No existe una cuenta con ese email');
+      throw new AppError(404, 'No existe una cuenta con ese identificador');
     }
 
     if (user.is_verified) {
@@ -289,7 +295,8 @@ const authService = {
 
     await userRepository.updateVerifyToken(user.id, newToken, newExpiresAt);
 
-    sendVerificationEmail(email.toLowerCase(), newToken).catch((err) =>
+    console.log(`[AuthService] Reenviando verificación para user: ${user.username}, email: ${user.email}`);
+    sendVerificationEmail(user.email, newToken).catch((err) =>
       console.error('Failed to resend verification email:', err)
     );
   },

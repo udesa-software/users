@@ -50,9 +50,9 @@ const changePasswordSchema = z.object({
 });
 
 const resendVerificationSchema = z.object({
-  email: z
-    .string({ required_error: 'El email es obligatorio' })
-    .email('El formato del email no es válido'),
+  identifier: z
+    .string({ required_error: 'El email o nombre de usuario es obligatorio' })
+    .min(1, 'El email o nombre de usuario es obligatorio'),
 });
 
 module.exports = { loginSchema, forgotPasswordSchema, resetPasswordSchema, changePasswordSchema, resendVerificationSchema };
