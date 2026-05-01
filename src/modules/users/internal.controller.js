@@ -24,7 +24,7 @@ const internalController = {
   async getUser(req, res, next) {
     try {
       const user = await userRepository.getUserDetail(req.params.id);
-      if (!user) throw new AppError(404, 'Usuario no encontrado');
+      if (!user) throw new AppError(410, 'Usuario no encontrado');
       res.json(user);
     } catch (err) {
       next(err);
@@ -36,7 +36,7 @@ const internalController = {
     try {
       const { id } = req.params;
       const user = await userRepository.findById(id);
-      if (!user) throw new AppError(404, 'Usuario no encontrado');
+      if (!user) throw new AppError(410, 'Usuario no encontrado');
       if (user.is_suspended) throw new AppError(400, 'El usuario ya está suspendido');
 
       const { token_version } = await userRepository.suspendUser(id);
@@ -57,7 +57,7 @@ const internalController = {
     try {
       const { id } = req.params;
       const user = await userRepository.findById(id);
-      if (!user) throw new AppError(404, 'Usuario no encontrado');
+      if (!user) throw new AppError(410, 'Usuario no encontrado');
       if (!user.is_suspended) throw new AppError(400, 'El usuario no está suspendido');
 
       await userRepository.unsuspendUser(id);

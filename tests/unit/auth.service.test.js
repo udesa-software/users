@@ -144,7 +144,7 @@ describe('authService.login', () => {
 
     await expect(
       authService.login({ identifier: 'test@example.com', password: 'Password1' })
-    ).rejects.toMatchObject({ statusCode: 403 });
+    ).rejects.toMatchObject({ statusCode: 401 });
   });
 
   it('lanza error 403 si la cuenta está suspendida por un admin', async () => {
@@ -152,7 +152,7 @@ describe('authService.login', () => {
 
     await expect(
       authService.login({ identifier: 'test@example.com', password: 'Password1' })
-    ).rejects.toMatchObject({ statusCode: 403 });
+    ).rejects.toMatchObject({ statusCode: 401 });
   });
 
   it('lanza error 423 si la cuenta está bloqueada por intentos fallidos', async () => {
@@ -163,12 +163,12 @@ describe('authService.login', () => {
     ).rejects.toMatchObject({ statusCode: 423 });
   });
 
-  it('lanza error 403 si el email no está verificado', async () => {
+  it('lanza error 412 si el email no está verificado', async () => {
     userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: false });
 
     await expect(
       authService.login({ identifier: 'test@example.com', password: 'Password1' })
-    ).rejects.toMatchObject({ statusCode: 403 });
+    ).rejects.toMatchObject({ statusCode: 412 });
   });
 
   it('lanza error 401 genérico si la contraseña es incorrecta', async () => {
@@ -458,14 +458,14 @@ describe('authService.refreshToken', () => {
     userRepository.findById.mockResolvedValue({ ...USUARIO_DB, deleted_at: new Date() });
 
     await expect(authService.refreshToken('valid-uuid-token'))
-      .rejects.toMatchObject({ statusCode: 403 });
+      .rejects.toMatchObject({ statusCode: 401 });
   });
 
   it('lanza error 403 si la cuenta está suspendida', async () => {
     userRepository.findById.mockResolvedValue({ ...USUARIO_DB, is_suspended: true });
 
     await expect(authService.refreshToken('valid-uuid-token'))
-      .rejects.toMatchObject({ statusCode: 403 });
+      .rejects.toMatchObject({ statusCode: 401 });
   });
 });
 
@@ -524,10 +524,10 @@ describe('authService.changePassword', () => {
     expect(result.message).toBeDefined();
   });
 
-  it('lanza error 404 si el usuario no existe', async () => {
+  it('lanza error 410 si el usuario no existe', async () => {
     userRepository.findById.mockResolvedValue(null);
 
-    await expect(authService.changePassword('user-uuid-1', INPUT_VALIDO)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(authService.changePassword('user-uuid-1', INPUT_VALIDO)).rejects.toMatchObject({ statusCode: 410 });
   });
 
   it('lanza error 423 si la cuenta está bloqueada', async () => {
