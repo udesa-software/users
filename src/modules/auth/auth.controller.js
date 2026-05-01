@@ -242,8 +242,8 @@ const authController = {
 
   async resendVerification(req, res, next) {
     try {
-      await authService.resendVerification(req.body.identifier);
-      res.status(200).json({ message: 'Email de verificación reenviado.' });
+      const result = await authService.resendVerification(req.body.identifier);
+      res.status(200).json(result);
     } catch (err) {
       next(err);
     }

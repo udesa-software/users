@@ -98,7 +98,7 @@ const userService = {
     if (!user) {
       throw new AppError(404, 'Usuario no encontrado');
     }
-    
+
     const updates = {};
 
     if (updateData.search_radius_km !== undefined) {
@@ -129,11 +129,15 @@ const userService = {
   async resendVerification(email) {
     const normalizedEmail = email.toLowerCase();
     const user = await userRepository.findByEmail(normalizedEmail);
+    const genericMessage = 'Si el correo está registrado y aún no fue verificado, recibirás un nuevo email pronto.';
+
     if (!user) {
-      throw new AppError(404, 'Email no registrado');
+      console.log(`[UserService] Reenviar verificación: email no encontrado (${normalizedEmail})`);
+      return { message: genericMessage };
     }
     if (user.is_verified) {
-      throw new AppError(400, 'La cuenta ya está verificada');
+      console.log(`[UserService] Reenviar verificación: email ya verificado (${normalizedEmail})`);
+      return { message: genericMessage };
     }
     const newToken = uuidv4();
     const expiresAt = tokenExpiresAt();
@@ -141,13 +145,15 @@ const userService = {
     sendVerificationEmail(normalizedEmail, newToken).catch((err) =>
       console.error('Failed to send verification email:', err)
     );
+
+    return { message: genericMessage };
   },
 
   async updateProfile(userId, { username, biography }) {
     const user = await userRepository.findById(userId);
     if (!user) {
-        throw new AppError(404, 'Usuario no encontrado');
-      }
+      throw new AppError(404, 'Usuario no encontrado');
+    }
 
     const updates = {};
 
