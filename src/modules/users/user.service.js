@@ -145,6 +145,8 @@ const userService = {
     sendVerificationEmail(normalizedEmail, newToken).catch((err) =>
       console.error('Failed to send verification email:', err)
     );
+
+    return { message: genericMessage };
   },
 
   async updateProfile(userId, { username, biography }) {

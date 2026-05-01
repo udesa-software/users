@@ -309,6 +309,8 @@ const authService = {
     sendVerificationEmail(user.email, newToken).catch((err) =>
       console.error('Failed to resend verification email:', err)
     );
+
+    return { message: genericMessage };
   },
 };
 
