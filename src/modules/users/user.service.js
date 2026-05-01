@@ -67,7 +67,7 @@ const userService = {
   async delete(userId, password) {
     const user = await userRepository.findById(userId);
     if (!user) {
-      throw new AppError(404, 'Usuario no encontrado');
+      throw new AppError(410, 'Usuario no encontrado');
     }
 
     // CA.3: confirmar identidad con contraseña antes de borrar
@@ -88,7 +88,7 @@ const userService = {
   async getPreferences(userId) {
     const prefs = await userRepository.getPreferences(userId);
     if (!prefs) {
-      throw new AppError(404, 'Preferencias no encontradas');
+      throw new AppError(410, 'Preferencias no encontradas');
     }
     return prefs;
   },
@@ -96,7 +96,7 @@ const userService = {
   async updatePreferences(userId, updateData) {
     const user = await userRepository.findById(userId);
     if (!user) {
-      throw new AppError(404, 'Usuario no encontrado');
+      throw new AppError(410, 'Usuario no encontrado');
     }
 
     const updates = {};
@@ -152,7 +152,7 @@ const userService = {
   async updateProfile(userId, { username, biography }) {
     const user = await userRepository.findById(userId);
     if (!user) {
-      throw new AppError(404, 'Usuario no encontrado');
+      throw new AppError(410, 'Usuario no encontrado');
     }
 
     const updates = {};

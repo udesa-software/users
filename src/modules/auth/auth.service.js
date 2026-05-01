@@ -43,7 +43,7 @@ const authService = {
     // CA.5: cuenta eliminada (soft-delete) o suspendida por admin
     if (user.deleted_at || user.is_suspended) {
       console.log(`[AuthService] Login fallido: cuenta suspendida o eliminada (${user.username})`);
-      throw new AppError(403, 'Cuenta suspendida');
+      throw new AppError(401, 'Cuenta suspendida');
     }
 
     // CA.2: cuenta bloqueada por demasiados intentos fallidos
@@ -59,7 +59,7 @@ const authService = {
     // CA.4: email no verificado
     if (!user.is_verified) {
       console.log(`[AuthService] Login detenido: email no verificado (${user.username})`);
-      throw new AppError(403, 'Debés verificar tu email antes de iniciar sesión. Revisá tu casilla de correo.');
+      throw new AppError(412, 'Debés verificar tu email antes de iniciar sesión. Revisá tu casilla de correo.');
     }
 
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
@@ -184,7 +184,7 @@ const authService = {
     }
 
     if (user.deleted_at || user.is_suspended) {
-      throw new AppError(403, 'Cuenta suspendida');
+      throw new AppError(401, 'Cuenta suspendida');
     }
 
     const accessToken = jwt.sign(
@@ -225,7 +225,7 @@ const authService = {
   async changePassword(userId, { currentPassword, newPassword }) {
     const user = await userRepository.findById(userId);
     if (!user) {
-      throw new AppError(404, 'Usuario no encontrado');
+      throw new AppError(410, 'Usuario no encontrado');
     }
 
     // CA.4: Check lockout

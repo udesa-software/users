@@ -294,10 +294,10 @@ describe('userService.delete', () => {
     expect(bcrypt.compare).toHaveBeenCalledWith('Password1', 'hashed_password');
   });
 
-  it('lanza error 404 si el usuario no existe', async () => {
+  it('lanza error 410 si el usuario no existe', async () => {
     userRepository.findById.mockResolvedValue(null);
 
-    await expect(userService.delete('user-uuid-1', 'Password1')).rejects.toMatchObject({ statusCode: 404 });
+    await expect(userService.delete('user-uuid-1', 'Password1')).rejects.toMatchObject({ statusCode: 410 });
     expect(userRepository.markDeleted).not.toHaveBeenCalled();
   });
 
@@ -371,10 +371,10 @@ describe('userService.getPreferences', () => {
     expect(result).toEqual(prefs);
   });
 
-  it('lanza error 404 si no se encuentran preferencias', async () => {
+  it('lanza error 410 si no se encuentran preferencias', async () => {
     userRepository.getPreferences.mockResolvedValue(null);
 
-    await expect(userService.getPreferences('user-uuid-1')).rejects.toMatchObject({ statusCode: 404 });
+    await expect(userService.getPreferences('user-uuid-1')).rejects.toMatchObject({ statusCode: 410 });
   });
 });
 
@@ -387,9 +387,9 @@ describe('userService.updatePreferences', () => {
     userRepository.updateLocationFrequency.mockResolvedValue({ location_update_frequency: 15 });
   });
 
-  it('lanza error 404 si el usuario no existe', async () => {
+  it('lanza error 410 si el usuario no existe', async () => {
     userRepository.findById.mockResolvedValue(null);
-    await expect(userService.updatePreferences('user-uuid-1', { search_radius_km: 10 })).rejects.toMatchObject({ statusCode: 404 });
+    await expect(userService.updatePreferences('user-uuid-1', { search_radius_km: 10 })).rejects.toMatchObject({ statusCode: 410 });
   });
 
   it('lanza error 400 si no se envian datos para actualizar', async () => {
@@ -432,11 +432,11 @@ describe('userService.updateProfile', () => {
   });
 
   // ─── usuario no existe ───
-  it('lanza 404 si el usuario no existe', async () => {
+  it('lanza 410 si el usuario no existe', async () => {
     userRepository.findById.mockResolvedValue(null);
 
     await expect(userService.updateProfile(USER_ID, { username: 'nuevo' }))
-      .rejects.toMatchObject({ statusCode: 404 });
+      .rejects.toMatchObject({ statusCode: 410 });
   });
 
   it('lanza AppError si el usuario no existe', async () => {
