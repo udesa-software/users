@@ -342,7 +342,7 @@ const userRepository = {
       query(`
         SELECT
           COUNT(*) AS total_users,
-          COUNT(*) FILTER (WHERE created_at >= date_trunc('month', NOW())) AS new_this_month,
+          COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days') AS new_this_month,
           COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days') AS new_this_week,
           COUNT(*) FILTER (WHERE is_suspended = TRUE) AS suspended_users,
           COUNT(*) FILTER (WHERE deleted_at IS NOT NULL) AS deleted_users,
