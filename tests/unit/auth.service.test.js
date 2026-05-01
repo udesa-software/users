@@ -647,17 +647,21 @@ describe('authService.resendVerification', () => {
     await expect(authService.resendVerification('test@example.com')).resolves.toBeUndefined();
   });
 
-  it('lanza error 404 si el email no está registrado', async () => {
+  it('devuelve mensaje genérico si el email no está registrado (evita enumeración)', async () => {
     userRepository.findByEmail.mockResolvedValue(null);
 
-    await expect(authService.resendVerification('noexiste@x.com')).rejects.toMatchObject({ statusCode: 404 });
+    const result = await authService.resendVerification('noexiste@x.com');
+
+    expect(result.message).toContain('Si el correo o usuario está registrado');
     expect(userRepository.updateVerifyToken).not.toHaveBeenCalled();
   });
 
-  it('lanza error 400 si la cuenta ya está verificada', async () => {
+  it('devuelve mensaje genérico si la cuenta ya está verificada (evita enumeración)', async () => {
     userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: true });
 
-    await expect(authService.resendVerification('test@example.com')).rejects.toMatchObject({ statusCode: 400 });
+    const result = await authService.resendVerification('test@example.com');
+
+    expect(result.message).toContain('Si el correo o usuario está registrado');
     expect(userRepository.updateVerifyToken).not.toHaveBeenCalled();
   });
 });

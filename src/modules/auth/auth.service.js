@@ -25,6 +25,7 @@ const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 const authService = {
   async login({ identifier, password }) {
+    console.log(`[AuthService] Intento de login para: ${identifier}`);
     // CA.3: support email or username
     let user = null;
     if (identifier.includes('@')) {
@@ -35,17 +36,20 @@ const authService = {
 
     // CA.3: mismo mensaje genérico para "no existe" y "contraseña incorrecta"
     if (!user) {
+      console.log(`[AuthService] Login fallido: usuario no encontrado (${identifier})`);
       throw new AppError(401, 'Credenciales inválidas');
     }
 
     // CA.5: cuenta eliminada (soft-delete) o suspendida por admin
     if (user.deleted_at || user.is_suspended) {
+      console.log(`[AuthService] Login fallido: cuenta suspendida o eliminada (${user.username})`);
       throw new AppError(403, 'Cuenta suspendida');
     }
 
     // CA.2: cuenta bloqueada por demasiados intentos fallidos
     if (user.locked_until) {
       if (new Date(user.locked_until) > new Date()) {
+        console.log(`[AuthService] Login fallido: cuenta bloqueada (${user.username})`);
         throw new AppError(423, `Cuenta bloqueada temporalmente. Intentá de nuevo en ${Math.ceil((user.locked_until - new Date()) / 60000)} minutos.`);
       }
       // El bloqueo expiró: resetear contador para que no se re-bloquee con 1 solo error
@@ -54,6 +58,7 @@ const authService = {
 
     // CA.4: email no verificado
     if (!user.is_verified) {
+      console.log(`[AuthService] Login detenido: email no verificado (${user.username})`);
       throw new AppError(403, 'Debés verificar tu email antes de iniciar sesión. Revisá tu casilla de correo.');
     }
 
@@ -115,7 +120,7 @@ const authService = {
     // CA.8: throttling - limit requests per account (e.g., 1 per minute)
     const THROTTLE_MINUTES = 1;
     if (user.last_reset_request_at &&
-        new Date() - new Date(user.last_reset_request_at) < THROTTLE_MINUTES * 60 * 1000) {
+      new Date() - new Date(user.last_reset_request_at) < THROTTLE_MINUTES * 60 * 1000) {
       return { message: genericMessage };
     }
 
@@ -281,12 +286,17 @@ const authService = {
       user = await userRepository.findByUsername(identifier.toLowerCase());
     }
 
+    // Generic message to avoid enumeration (CA.4)
+    const genericMessage = 'Si el correo o usuario está registrado y aún no fue verificado, recibirás un nuevo email pronto.';
+
     if (!user) {
-      throw new AppError(404, 'No existe una cuenta con ese identificador');
+      console.log(`[AuthService] Reenviar verificación: identificador no encontrado (${identifier})`);
+      return { message: genericMessage };
     }
 
     if (user.is_verified) {
-      throw new AppError(400, 'La cuenta ya fue verificada');
+      console.log(`[AuthService] Reenviar verificación: usuario ya verificado (${user.username})`);
+      return { message: genericMessage };
     }
 
     // CA.6: fresh token with new 24h window
