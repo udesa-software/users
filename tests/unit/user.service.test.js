@@ -250,7 +250,8 @@ describe('userService.resendVerification', () => {
     userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, is_verified: false });
     sendVerificationEmail.mockRejectedValue(new Error('SMTP caído'));
 
-    await expect(userService.resendVerification('test@example.com')).resolves.toBeUndefined();
+    const result = await userService.resendVerification('test@example.com');
+    expect(result.message).toContain('Si el correo está registrado');
   });
 
   it('devuelve mensaje genérico si el email no está registrado (evita enumeración)', async () => {
