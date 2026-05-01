@@ -393,7 +393,6 @@ const userRepository = {
     const result = await query(
       `SELECT id, username FROM users
        WHERE username ILIKE $1
-         AND is_private = FALSE
          AND is_suspended = FALSE
          AND deleted_at IS NULL
          AND id != $4
