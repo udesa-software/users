@@ -163,7 +163,7 @@ Verifica el email del usuario usando el token recibido por email.
 
 ---
 
-#### `POST /api/users/resend-verification`
+#### `POST /api/auth/resend-verification`
 Reenvía el email de verificación con un nuevo token (24 horas).
 
 **Body:**
