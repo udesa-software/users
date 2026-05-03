@@ -3,6 +3,10 @@ dist/
 .env
 k8s/secret.yaml
 
+# Coverage reports
+coverage/
+coverage-integration/
+
 # Compiled class file
 *.class
 
