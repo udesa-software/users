@@ -27,8 +27,6 @@ const envSchema = z.object({
   INITIAL_SUPERADMIN_EMAIL: z.string().email().optional(),
   INITIAL_SUPERADMIN_TEMP_PASSWORD: z.string().optional(),
   
-  MOBILE_DEEP_LINK_URL: z.string().optional(),
-  MOBILE_RESET_PASSWORD_URL: z.string().optional(),
 
   // URL del servicio de friends (H4 CA.2/CA.4: eliminar relaciones al borrar cuenta)
   FRIENDS_SERVICE_URL: z.string().url().optional(),
