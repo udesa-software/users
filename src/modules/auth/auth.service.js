@@ -103,7 +103,7 @@ const authService = {
     };
   },
 
-  async requestPasswordReset(identifier) {
+  async requestPasswordReset(identifier, returnUrl) {
     // CA.4: find by email or username, always return same message
     let user = await userRepository.findByEmail(identifier.toLowerCase());
     if (!user) {
@@ -132,7 +132,7 @@ const authService = {
     await userRepository.updatePasswordResetToken(user.id, token, expiresAt);
     await userRepository.updateLastResetRequest(user.id);
 
-    sendResetPasswordEmail(user.email, token).catch((err) =>
+    sendResetPasswordEmail(user.email, token, returnUrl).catch((err) =>
       console.error('Failed to send reset password email:', err)
     );
 
