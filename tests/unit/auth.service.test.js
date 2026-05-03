@@ -295,7 +295,7 @@ describe('authService.requestPasswordReset', () => {
     await authService.requestPasswordReset('test@example.com');
     await Promise.resolve();
 
-    expect(sendResetPasswordEmail).toHaveBeenCalledWith('test@example.com', 'reset-token-uuid');
+    expect(sendResetPasswordEmail).toHaveBeenCalledWith('test@example.com', 'reset-token-uuid', undefined);
   });
 
   it('no falla si el envío del email falla', async () => {
