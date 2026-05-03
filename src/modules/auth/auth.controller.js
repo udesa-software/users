@@ -67,8 +67,6 @@ const authController = {
       const returnUrl = req.query['returnUrl'];
       await authService.verifyResetToken(token); // Valida internamente
 
-      const { env } = require('../../config/env');
-
       const deepLinkBase = returnUrl || 'udesamigos://reset-password';
       // Si el link base ya contiene el esquema y el path, solo agregamos el token
       const deepLink = `${deepLinkBase}${deepLinkBase.includes('?') ? '&' : '?'}token=${token}`;
