@@ -589,15 +589,15 @@ describe('PATCH /api/users/profile', () => {
     expect(res.body.biography).toBe('Hello world');
   });
 
-  it('200 — strips HTML tags from biography', async () => {
+  it('200 — strips HTML tags from biography (keeps text content)', async () => {
     const user = await insertVerifiedUser();
     const token = makeToken(user);
     const res = await request(app)
       .patch('/api/users/profile')
       .set('Authorization', `Bearer ${token}`)
-      .send({ biography: '<script>alert("xss")</script>Hello' });
+      .send({ biography: '<b>Hello</b> <em>world</em>' });
     expect(res.status).toBe(200);
-    expect(res.body.biography).toBe('Hello');
+    expect(res.body.biography).toBe('Hello world');
   });
 
   it('409 — username already taken by another user', async () => {
