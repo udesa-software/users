@@ -14,6 +14,7 @@ const forgotPasswordSchema = z.object({
   identifier: z
     .string({ required_error: 'El email o nombre de usuario es obligatorio' })
     .min(1, 'El email o nombre de usuario es obligatorio'),
+  returnUrl: z.string().url().optional(),
 });
 
 const resetPasswordSchema = z.object({

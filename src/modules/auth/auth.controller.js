@@ -34,7 +34,8 @@ const authController = {
 
   async forgotPassword(req, res, next) {
     try {
-      const result = await authService.requestPasswordReset(req.body.identifier);
+      const { identifier, returnUrl } = req.body;
+      const result = await authService.requestPasswordReset(identifier, returnUrl);
       res.status(200).json(result);
     } catch (err) {
       next(err);
@@ -63,12 +64,10 @@ const authController = {
   async verifyResetToken(req, res, next) {
     try {
       const token = req.query['token'];
+      const returnUrl = req.query['returnUrl'];
       await authService.verifyResetToken(token); // Valida internamente
 
-      const { env } = require('../../config/env');
-
-      // Intentamos usar la URL específica de reset, sino el scheme base
-      const deepLinkBase = env.MOBILE_RESET_PASSWORD_URL || 'udesamigos://ResetPassword';
+      const deepLinkBase = returnUrl || 'udesamigos://reset-password';
       // Si el link base ya contiene el esquema y el path, solo agregamos el token
       const deepLink = `${deepLinkBase}${deepLinkBase.includes('?') ? '&' : '?'}token=${token}`;
 

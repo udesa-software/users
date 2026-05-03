@@ -10,7 +10,6 @@ data:
   ACCESS_TOKEN_EXPIRES_IN: "15m"
   REFRESH_TOKEN_EXPIRES_IN: "7d"
   APP_URL: "https://tds-group-3.tds-linar.udesa.edu.ar"
-  MOBILE_RESET_PASSWORD_URL: "exp://tds-group-3.tds-linar.udesa.edu.ar/--/ResetPassword"
   ALLOWED_EMAIL_DOMAIN: "udesa.edu.ar"
   SMTP_PORT: "587"
   SMTP_FROM: "noreply@udesa.edu.ar"

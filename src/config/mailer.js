@@ -54,8 +54,11 @@ async function sendVerificationEmail(toEmail, token) {
   }
 }
 
-async function sendResetPasswordEmail(toEmail, token) {
-  const resetUrl = `${env.APP_URL}/api/auth/reset-password?token=${token}`;
+async function sendResetPasswordEmail(toEmail, token, returnUrl) {
+  let resetUrl = `${env.APP_URL}/api/auth/reset-password?token=${token}`;
+  if (returnUrl) {
+    resetUrl += `&returnUrl=${encodeURIComponent(returnUrl)}`;
+  }
 
   if (!transporter) {
     console.log('─────────────────────────────────────────────');
