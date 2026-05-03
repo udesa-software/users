@@ -71,6 +71,7 @@ jobs:
           TEST_DB_USER: admin
           TEST_DB_PASSWORD: secret
           TEST_REDIS_URL: redis://localhost:6379
+          DB_SSL: 'false'
 
       - name: Upload integration coverage to Codecov
         uses: codecov/codecov-action@v5
