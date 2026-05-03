@@ -289,13 +289,22 @@ describe('authService.requestPasswordReset', () => {
     expect(userRepository.updateLastResetRequest).toHaveBeenCalledWith('user-uuid-1');
   });
 
-  it('envía el email con el token de reset', async () => {
+  it('envía el email con el token de reset (sin returnUrl por defecto)', async () => {
     userRepository.findByEmail.mockResolvedValue(USUARIO_DB);
 
     await authService.requestPasswordReset('test@example.com');
     await Promise.resolve();
 
     expect(sendResetPasswordEmail).toHaveBeenCalledWith('test@example.com', 'reset-token-uuid', undefined);
+  });
+
+  it('envía el email con el token de reset y el returnUrl cuando se provee', async () => {
+    userRepository.findByEmail.mockResolvedValue(USUARIO_DB);
+
+    await authService.requestPasswordReset('test@example.com', 'udesamigos://ResetPassword');
+    await Promise.resolve();
+
+    expect(sendResetPasswordEmail).toHaveBeenCalledWith('test@example.com', 'reset-token-uuid', 'udesamigos://ResetPassword');
   });
 
   it('no falla si el envío del email falla', async () => {

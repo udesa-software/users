@@ -3,7 +3,7 @@ name: CI
 on:
   push:
   pull_request:
-    types: 
+    types:
       - opened
       - synchronize
       - reopened
@@ -12,6 +12,31 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: secret
+          POSTGRES_DB: users_db
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout code
@@ -37,6 +62,26 @@ jobs:
           flags: unit
           fail_ci_if_error: true
 
+      - name: Run integration tests
+        run: npm run test:integration:coverage
+        env:
+          TEST_DB_HOST: localhost
+          TEST_DB_PORT: 5433
+          TEST_DB_NAME: users_db
+          TEST_DB_USER: admin
+          TEST_DB_PASSWORD: secret
+          TEST_REDIS_URL: redis://localhost:6379
+          DB_SSL: 'false'
+
+      - name: Upload integration coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: udesa-software/users
+          files: ./coverage-integration/lcov.info
+          flags: integration
+          fail_ci_if_error: true
+
       - name: Test summary
         if: always()
         uses: actions/github-script@v8
@@ -46,6 +91,7 @@ jobs:
               .addHeading('Test Results')
               .addTable([
                 [{data: 'Step', header: true}, {data: 'Status', header: true}],
-                ['Unit tests (npm run test:coverage)', '${{ job.status }}']
+                ['Unit tests (npm run test:coverage)', '${{ job.status }}'],
+                ['Integration tests (npm run test:integration:coverage)', '${{ job.status }}']
               ])
               .write()

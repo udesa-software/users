@@ -1,7 +1,7 @@
 const { Pool } = require('pg');
 const { env } = require('./env');
 
-const SSL_CONFIG = { rejectUnauthorized: false };
+const SSL_CONFIG = env.DB_SSL !== 'false' ? { rejectUnauthorized: false } : false;
 
 // Pool privilegiado para migraciones (CREATE TABLE, etc.)
 // En Supabase se usa el mismo usuario para todo

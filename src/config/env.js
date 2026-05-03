@@ -33,6 +33,9 @@ const envSchema = z.object({
 
   // Secreto compartido para comunicación interna entre microservicios
   INTERNAL_SECRET: z.string().optional(),
+
+  // Desactivar SSL para postgres (útil en entornos locales/Docker)
+  DB_SSL: z.string().default('true'),
 });
 
 const parsed = envSchema.safeParse(process.env);
