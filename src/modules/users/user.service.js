@@ -209,6 +209,11 @@ const userService = {
       username: u.username
     }));
   },
+
+  // H10 CA.1: actualiza la última actividad del usuario
+  async heartbeat(userId) {
+    await userRepository.updateLastSeen(userId);
+  },
 };
 
 module.exports = { userService };

@@ -28,4 +28,8 @@ router.get('/search', authenticate, userController.searchUsers);
 // búsqueda pública simplificada (solo id+username, para uso en friends/otros servicios)
 router.get('/search/public', authenticate, userController.searchUsersPublic);
 
+// H10 CA.1: heartbeat — actualiza last_seen_at para el tracking de presencia online.
+// La app móvil lo llama en background cada ~60s mientras está en uso.
+router.post('/heartbeat', authenticate, userController.heartbeat);
+
 module.exports = router;

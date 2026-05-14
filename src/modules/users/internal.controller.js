@@ -114,6 +114,19 @@ const internalController = {
       next(err);
     }
   },
+  
+  async getOnlineStatus(req, res, next) {
+    try {
+      const { userIds } = req.body;
+      if (!Array.isArray(userIds)) {
+        return next(new AppError(400, 'userIds debe ser un array'));
+      }
+      const onlineIds = await userRepository.getOnlineStatus(userIds);
+      res.json({ onlineIds });
+    } catch (err) {
+      next(err);
+    }
+  },
 };
 
 module.exports = { internalController };

@@ -428,6 +428,29 @@ const userRepository = {
     );
     return result.rows[0] ?? null;
   },
+
+  // H10 CA.1: actualiza el timestamp de última actividad del usuario (llamado por heartbeat)
+  async updateLastSeen(userId) {
+    await query(
+      `UPDATE users SET last_seen_at = NOW(), updated_at = NOW() WHERE id = $1`,
+      [userId]
+    );
+  },
+
+  // H10 CA.1: dado un array de UUIDs, devuelve el subconjunto que estuvo activo
+  // en los últimos 5 minutos.
+  async getOnlineStatus(userIds) {
+    if (!userIds || userIds.length === 0) return [];
+    const result = await query(
+      `SELECT id FROM users
+       WHERE id = ANY($1::uuid[])
+         AND last_seen_at >= NOW() - INTERVAL '5 minutes'
+         AND deleted_at IS NULL
+         AND is_suspended = FALSE`,
+      [userIds]
+    );
+    return result.rows.map((r) => r.id);
+  },
 };
 
 module.exports = { userRepository };
