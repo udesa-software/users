@@ -32,6 +32,8 @@ jest.mock('../../src/modules/users/user.repository', () => ({
     updatePrivacy: jest.fn(),
     searchPublicUsers: jest.fn(),
     searchUsers: jest.fn(),
+    updateLastSeen: jest.fn(),
+    getOnlineStatus: jest.fn(),
   },
 }));
 
@@ -762,5 +764,128 @@ describe('userService.searchUsersPublic', () => {
       { id: 'uuid-1', username: 'mateo' },
       { id: 'uuid-2', username: 'juan' },
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H11 CA.1: userService.heartbeat
+// ---------------------------------------------------------------------------
+describe('userService.heartbeat', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    userRepository.updateLastSeen.mockResolvedValue();
+  });
+
+  it('llama a userRepository.updateLastSeen con el userId del usuario autenticado', async () => {
+    await userService.heartbeat('user-uuid-1');
+
+    expect(userRepository.updateLastSeen).toHaveBeenCalledWith('user-uuid-1');
+  });
+
+  it('llama a updateLastSeen exactamente una vez por heartbeat', async () => {
+    await userService.heartbeat('user-uuid-1');
+
+    expect(userRepository.updateLastSeen).toHaveBeenCalledTimes(1);
+  });
+
+  it('propaga el error si updateLastSeen falla', async () => {
+    userRepository.updateLastSeen.mockRejectedValue(new Error('DB error'));
+
+    await expect(userService.heartbeat('user-uuid-1')).rejects.toThrow('DB error');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H11 CA.1: internalController.getOnlineStatus
+// ---------------------------------------------------------------------------
+describe('internalController.getOnlineStatus', () => {
+  const USER_A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  const USER_B = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+
+  const makeReq = (body = {}) => ({ body, params: {}, query: {} });
+  const makeRes = () => {
+    const res = {};
+    res.json = jest.fn().mockReturnValue(res);
+    res.status = jest.fn().mockReturnValue(res);
+    return res;
+  };
+  const makeNext = () => jest.fn();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('llama a userRepository.getOnlineStatus con los userIds del body', async () => {
+    userRepository.getOnlineStatus.mockResolvedValue([USER_A]);
+    const req = makeReq({ userIds: [USER_A, USER_B] });
+    const res = makeRes();
+
+    await internalController.getOnlineStatus(req, res, makeNext());
+
+    expect(userRepository.getOnlineStatus).toHaveBeenCalledWith([USER_A, USER_B]);
+  });
+
+  it('responde con { onlineIds: [...] } con los IDs activos', async () => {
+    userRepository.getOnlineStatus.mockResolvedValue([USER_A]);
+    const req = makeReq({ userIds: [USER_A, USER_B] });
+    const res = makeRes();
+
+    await internalController.getOnlineStatus(req, res, makeNext());
+
+    expect(res.json).toHaveBeenCalledWith({ onlineIds: [USER_A] });
+  });
+
+  it('responde con { onlineIds: [] } si ninguno está online', async () => {
+    userRepository.getOnlineStatus.mockResolvedValue([]);
+    const req = makeReq({ userIds: [USER_A, USER_B] });
+    const res = makeRes();
+
+    await internalController.getOnlineStatus(req, res, makeNext());
+
+    expect(res.json).toHaveBeenCalledWith({ onlineIds: [] });
+  });
+
+  it('llama a next con AppError 400 si userIds no es un array', async () => {
+    const req = makeReq({ userIds: 'no-soy-array' });
+    const res = makeRes();
+    const next = makeNext();
+
+    await internalController.getOnlineStatus(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.any(AppErrorInternal));
+    expect(next.mock.calls[0][0].statusCode).toBe(400);
+    expect(userRepository.getOnlineStatus).not.toHaveBeenCalled();
+  });
+
+  it('llama a next con AppError 400 si userIds es undefined', async () => {
+    const req = makeReq({});
+    const res = makeRes();
+    const next = makeNext();
+
+    await internalController.getOnlineStatus(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.any(AppErrorInternal));
+    expect(next.mock.calls[0][0].statusCode).toBe(400);
+  });
+
+  it('no llama a res.json si userIds es inválido', async () => {
+    const req = makeReq({ userIds: 123 });
+    const res = makeRes();
+
+    await internalController.getOnlineStatus(req, res, makeNext());
+
+    expect(res.json).not.toHaveBeenCalled();
+  });
+
+  it('llama a next si el repository lanza un error inesperado', async () => {
+    userRepository.getOnlineStatus.mockRejectedValue(new Error('DB error'));
+    const req = makeReq({ userIds: [USER_A] });
+    const res = makeRes();
+    const next = makeNext();
+
+    await internalController.getOnlineStatus(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.any(Error));
+    expect(res.json).not.toHaveBeenCalled();
   });
 });
