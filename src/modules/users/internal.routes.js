@@ -11,5 +11,6 @@ router.get('/users/:id/preferences', internalController.getPreferences);
 router.post('/users/:id/suspend', internalController.suspendUser);
 router.post('/users/:id/unsuspend', internalController.unsuspendUser);
 router.get('/metrics', internalController.getMetrics);
+router.post('/users/online-status', internalController.getOnlineStatus);
 
 module.exports = router;

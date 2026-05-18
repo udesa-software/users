@@ -75,6 +75,17 @@ const userController = {
       next(err);
     }
   },
+
+  // H10 CA.1: actualiza last_seen_at del usuario autenticado. Llamado por la app
+  // en background cada ~60s para registrar actividad reciente.
+  async heartbeat(req, res, next) {
+    try {
+      await userService.heartbeat(req.user.sub);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
 };
 
 module.exports = { userController };
