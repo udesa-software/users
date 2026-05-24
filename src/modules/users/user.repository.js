@@ -305,7 +305,7 @@ const userRepository = {
     const result = await query(
       `SELECT u.id, u.username, u.email, u.is_verified, u.is_suspended,
               u.deleted_at, u.created_at, u.last_login_at,
-              u.failed_login_attempts, u.locked_until,
+              u.failed_login_attempts, u.locked_until, u.last_seen_at,
               p.biography, p.search_radius_km, p.location_update_frequency
        FROM users u
        LEFT JOIN preferences p ON p.user_id = u.id
