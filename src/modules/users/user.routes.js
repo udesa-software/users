@@ -32,4 +32,7 @@ router.get('/search/public', authenticate, userController.searchUsersPublic);
 // La app móvil lo llama en background cada ~60s mientras está en uso.
 router.post('/heartbeat', authenticate, userController.heartbeat);
 
+// GET /api/users/:id/profile — perfil público de cualquier usuario autenticado
+router.get('/:id/profile', authenticate, userController.getPublicProfile);
+
 module.exports = router;

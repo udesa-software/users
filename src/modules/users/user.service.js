@@ -214,6 +214,25 @@ const userService = {
   async heartbeat(userId) {
     await userRepository.updateLastSeen(userId);
   },
+
+  // Devuelve el perfil público de cualquier usuario (sin información privada)
+  async getPublicProfile(userId) {
+    const result = await userRepository.getUserDetail(userId);
+    if (!result) {
+      throw new AppError(410, 'Usuario no encontrado');
+    }
+    const fiveMinutesMs = 5 * 60 * 1000;
+    const isOnline = result.last_seen_at
+      ? (Date.now() - new Date(result.last_seen_at).getTime()) <= fiveMinutesMs
+      : false;
+    return {
+      id: result.id,
+      username: result.username,
+      biography: result.biography || '',
+      is_online: isOnline,
+      last_seen_at: result.last_seen_at,
+    };
+  },
 };
 
 module.exports = { userService };
