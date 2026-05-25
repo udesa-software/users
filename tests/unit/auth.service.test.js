@@ -476,6 +476,71 @@ describe('authService.refreshToken', () => {
     await expect(authService.refreshToken('valid-uuid-token'))
       .rejects.toMatchObject({ statusCode: 401 });
   });
+
+  // H9 CA.4: cuenta en revisión bloquea el refresh
+  it('H9 CA.4: lanza error 403 si la cuenta está en revisión durante el refresh', async () => {
+    userRepository.findById.mockResolvedValue({ ...USUARIO_DB, under_review: true });
+
+    await expect(authService.refreshToken('valid-uuid-token'))
+      .rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it('H9 CA.4: no emite nuevo access token si la cuenta está en revisión', async () => {
+    userRepository.findById.mockResolvedValue({ ...USUARIO_DB, under_review: true });
+
+    await authService.refreshToken('valid-uuid-token').catch(() => {});
+
+    expect(jwt.sign).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H9 CA.4: authService.login — bloqueo de cuentas en revisión
+// ---------------------------------------------------------------------------
+describe('authService.login — H9 cuenta en revisión', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, under_review: true });
+    bcrypt.compare.mockResolvedValue(true);
+  });
+
+  it('H9 CA.4: lanza error 403 si la cuenta está en revisión', async () => {
+    await expect(
+      authService.login({ identifier: 'test@example.com', password: 'Password1' })
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it('H9 CA.4: el mensaje de error indica que la cuenta está en revisión', async () => {
+    await expect(
+      authService.login({ identifier: 'test@example.com', password: 'Password1' })
+    ).rejects.toMatchObject({ message: expect.stringContaining('revisión') });
+  });
+
+  it('H9 CA.4: no genera access token si la cuenta está en revisión', async () => {
+    await authService.login({ identifier: 'test@example.com', password: 'Password1' }).catch(() => {});
+
+    expect(jwt.sign).not.toHaveBeenCalled();
+  });
+
+  it('H9 CA.4: el chequeo de under_review ocurre antes que la verificación de contraseña', async () => {
+    await authService.login({ identifier: 'test@example.com', password: 'Password1' }).catch(() => {});
+
+    expect(bcrypt.compare).not.toHaveBeenCalled();
+  });
+
+  it('H9 CA.4: permite login si la cuenta no está en revisión (under_review: false)', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, under_review: false });
+    jwt.sign.mockReturnValue('access-token-mock');
+    uuidv4.mockReturnValue('refresh-uuid-mock');
+    userRepository.createRefreshToken.mockResolvedValue();
+    userRepository.updateLastLogin.mockResolvedValue();
+    userRepository.resetFailedAttempts.mockResolvedValue();
+    userRepository.findProfileById.mockResolvedValue({ role: 'user', biography: null });
+
+    await expect(
+      authService.login({ identifier: 'test@example.com', password: 'Password1' })
+    ).resolves.toBeDefined();
+  });
 });
 
 // changePassword

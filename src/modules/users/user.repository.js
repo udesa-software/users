@@ -428,6 +428,29 @@ const userRepository = {
     );
     return result.rows[0] ?? null;
   },
+
+  // H9 CA.2/CA.4: pone la cuenta en revisión e invalida todos los tokens activos.
+  // Usa WHERE under_review = FALSE para ser idempotente: si ya está en revisión devuelve null.
+  async putUnderReview(userId) {
+    const result = await query(
+      `UPDATE users
+       SET under_review = TRUE,
+           token_version = token_version + 1,
+           updated_at = NOW()
+       WHERE id = $1 AND under_review = FALSE
+       RETURNING token_version`,
+      [userId]
+    );
+    return result.rows[0] ?? null;
+  },
+
+  // H9: resuelve la revisión, permitiendo que el usuario vuelva a iniciar sesión.
+  async resolveReview(userId) {
+    await query(
+      `UPDATE users SET under_review = FALSE, updated_at = NOW() WHERE id = $1`,
+      [userId]
+    );
+  },
 };
 
 module.exports = { userRepository };

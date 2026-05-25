@@ -32,6 +32,13 @@ jest.mock('../../src/modules/users/user.repository', () => ({
     updatePrivacy: jest.fn(),
     searchPublicUsers: jest.fn(),
     searchUsers: jest.fn(),
+    // H5
+    suspendUser: jest.fn(),
+    unsuspendUser: jest.fn(),
+    deleteAllRefreshTokensForUser: jest.fn(),
+    // H9
+    putUnderReview: jest.fn(),
+    resolveReview: jest.fn(),
   },
 }));
 
@@ -762,5 +769,223 @@ describe('userService.searchUsersPublic', () => {
       { id: 'uuid-1', username: 'mateo' },
       { id: 'uuid-2', username: 'juan' },
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H9 CA.2/CA.4: internalController.putUserUnderReview
+// ---------------------------------------------------------------------------
+describe('internalController.putUserUnderReview', () => {
+  const { redisClient } = require('../../src/config/redis');
+
+  const USER_ACTIVO = {
+    id: 'user-uuid-1',
+    username: 'testuser',
+    email: 'test@example.com',
+    is_suspended: false,
+    under_review: false,
+    deleted_at: null,
+    token_version: 3,
+  };
+
+  const makeReq  = (id) => ({ params: { id }, body: {}, query: {} });
+  const makeRes  = () => {
+    const res = {};
+    res.json   = jest.fn().mockReturnValue(res);
+    res.status = jest.fn().mockReturnValue(res);
+    return res;
+  };
+  const makeNext = () => jest.fn();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    userRepository.findById.mockResolvedValue(USER_ACTIVO);
+    userRepository.putUnderReview.mockResolvedValue({ token_version: 4 });
+    userRepository.deleteAllRefreshTokensForUser.mockResolvedValue();
+    redisClient.set.mockResolvedValue('OK');
+  });
+
+  // Usuario no encontrado
+  it('llama a next con AppError 410 si el usuario no existe', async () => {
+    userRepository.findById.mockResolvedValue(null);
+    const next = makeNext();
+
+    await internalController.putUserUnderReview(makeReq('no-existe'), makeRes(), next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 410 }));
+  });
+
+  // Ya está en revisión — idempotente, responde 200 sin error
+  it('CA.2: responde con mensaje si el usuario ya estaba en revisión (idempotente)', async () => {
+    userRepository.putUnderReview.mockResolvedValue(null);
+    const res = makeRes();
+
+    await internalController.putUserUnderReview(makeReq(USER_ACTIVO.id), res, makeNext());
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('revisión') })
+    );
+  });
+
+  it('CA.2: no revoca tokens si el usuario ya estaba en revisión', async () => {
+    userRepository.putUnderReview.mockResolvedValue(null);
+
+    await internalController.putUserUnderReview(makeReq(USER_ACTIVO.id), makeRes(), makeNext());
+
+    expect(userRepository.deleteAllRefreshTokensForUser).not.toHaveBeenCalled();
+    expect(redisClient.set).not.toHaveBeenCalled();
+  });
+
+  // Caso exitoso
+  it('CA.2: llama a putUnderReview con el id del usuario', async () => {
+    await internalController.putUserUnderReview(makeReq(USER_ACTIVO.id), makeRes(), makeNext());
+
+    expect(userRepository.putUnderReview).toHaveBeenCalledWith(USER_ACTIVO.id);
+  });
+
+  it('CA.4: elimina todos los refresh tokens al poner en revisión', async () => {
+    await internalController.putUserUnderReview(makeReq(USER_ACTIVO.id), makeRes(), makeNext());
+
+    expect(userRepository.deleteAllRefreshTokensForUser).toHaveBeenCalledWith(USER_ACTIVO.id);
+  });
+
+  it('CA.4: publica la revocación en Redis con el nuevo token_version', async () => {
+    await internalController.putUserUnderReview(makeReq(USER_ACTIVO.id), makeRes(), makeNext());
+
+    expect(redisClient.set).toHaveBeenCalledWith(
+      `revoked:${USER_ACTIVO.id}`,
+      4,
+      'EX',
+      expect.any(Number)
+    );
+  });
+
+  it('responde con mensaje de éxito al poner en revisión', async () => {
+    const res = makeRes();
+
+    await internalController.putUserUnderReview(makeReq(USER_ACTIVO.id), res, makeNext());
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('revisión') })
+    );
+  });
+
+  it('no llama a next si la operación es exitosa', async () => {
+    const next = makeNext();
+
+    await internalController.putUserUnderReview(makeReq(USER_ACTIVO.id), makeRes(), next);
+
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('llama a next si el repository lanza un error inesperado', async () => {
+    userRepository.putUnderReview.mockRejectedValue(new Error('DB error'));
+    const next = makeNext();
+
+    await internalController.putUserUnderReview(makeReq(USER_ACTIVO.id), makeRes(), next);
+
+    expect(next).toHaveBeenCalledWith(expect.any(Error));
+  });
+
+  it('CA.4: no falla si Redis no está disponible al publicar la revocación', async () => {
+    redisClient.set.mockRejectedValue(new Error('Redis down'));
+    const next = makeNext();
+    const res  = makeRes();
+
+    await internalController.putUserUnderReview(makeReq(USER_ACTIVO.id), res, next);
+
+    // No debe propagar error al caller; la revocación en Redis es fire-and-forget
+    expect(next).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H9: internalController.resolveUserReview
+// ---------------------------------------------------------------------------
+describe('internalController.resolveUserReview', () => {
+  const USER_EN_REVISION = {
+    id: 'user-uuid-1',
+    username: 'testuser',
+    email: 'test@example.com',
+    under_review: true,
+    deleted_at: null,
+  };
+
+  const makeReq  = (id) => ({ params: { id }, body: {}, query: {} });
+  const makeRes  = () => {
+    const res = {};
+    res.json   = jest.fn().mockReturnValue(res);
+    res.status = jest.fn().mockReturnValue(res);
+    return res;
+  };
+  const makeNext = () => jest.fn();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    userRepository.findById.mockResolvedValue(USER_EN_REVISION);
+    userRepository.resolveReview.mockResolvedValue();
+  });
+
+  // Usuario no encontrado
+  it('llama a next con AppError 410 si el usuario no existe', async () => {
+    userRepository.findById.mockResolvedValue(null);
+    const next = makeNext();
+
+    await internalController.resolveUserReview(makeReq('no-existe'), makeRes(), next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 410 }));
+  });
+
+  // Usuario no está en revisión
+  it('llama a next con AppError 400 si el usuario no está en revisión', async () => {
+    userRepository.findById.mockResolvedValue({ ...USER_EN_REVISION, under_review: false });
+    const next = makeNext();
+
+    await internalController.resolveUserReview(makeReq(USER_EN_REVISION.id), makeRes(), next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
+  });
+
+  it('no llama a resolveReview si el usuario no está en revisión', async () => {
+    userRepository.findById.mockResolvedValue({ ...USER_EN_REVISION, under_review: false });
+
+    await internalController.resolveUserReview(makeReq(USER_EN_REVISION.id), makeRes(), makeNext());
+
+    expect(userRepository.resolveReview).not.toHaveBeenCalled();
+  });
+
+  // Caso exitoso
+  it('llama a resolveReview con el id del usuario', async () => {
+    await internalController.resolveUserReview(makeReq(USER_EN_REVISION.id), makeRes(), makeNext());
+
+    expect(userRepository.resolveReview).toHaveBeenCalledWith(USER_EN_REVISION.id);
+  });
+
+  it('responde con mensaje de éxito al resolver la revisión', async () => {
+    const res = makeRes();
+
+    await internalController.resolveUserReview(makeReq(USER_EN_REVISION.id), res, makeNext());
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('resuelta') })
+    );
+  });
+
+  it('no llama a next si la operación es exitosa', async () => {
+    const next = makeNext();
+
+    await internalController.resolveUserReview(makeReq(USER_EN_REVISION.id), makeRes(), next);
+
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('llama a next si el repository lanza un error inesperado', async () => {
+    userRepository.resolveReview.mockRejectedValue(new Error('DB error'));
+    const next = makeNext();
+
+    await internalController.resolveUserReview(makeReq(USER_EN_REVISION.id), makeRes(), next);
+
+    expect(next).toHaveBeenCalledWith(expect.any(Error));
   });
 });

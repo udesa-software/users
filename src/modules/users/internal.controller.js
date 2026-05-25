@@ -105,6 +105,43 @@ const internalController = {
     }
   },
 
+  // H9 CA.2/CA.4: poner usuario en revisión (llamado por friends service al superar 5 reportes)
+  async putUserUnderReview(req, res, next) {
+    try {
+      const { id } = req.params;
+      const user = await userRepository.findById(id);
+      if (!user) throw new AppError(410, 'Usuario no encontrado');
+
+      const updated = await userRepository.putUnderReview(id);
+      if (!updated) {
+        return res.json({ message: 'El usuario ya está en revisión' });
+      }
+
+      await userRepository.deleteAllRefreshTokensForUser(id);
+      redisClient.set(`revoked:${id}`, updated.token_version, 'EX', REVOKED_TTL_SEC)
+        .catch((err) => console.error('[Redis] under-review revocation failed:', err));
+
+      res.json({ message: 'Usuario puesto en revisión. Su sesión fue invalidada.' });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // H9: resolver revisión (llamado por el backoffice cuando un admin decide el caso)
+  async resolveUserReview(req, res, next) {
+    try {
+      const { id } = req.params;
+      const user = await userRepository.findById(id);
+      if (!user) throw new AppError(410, 'Usuario no encontrado');
+      if (!user.under_review) throw new AppError(400, 'El usuario no está en revisión');
+
+      await userRepository.resolveReview(id);
+      res.json({ message: 'Revisión resuelta. El usuario puede volver a iniciar sesión.' });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   // H3: métricas para el dashboard del backoffice
   async getMetrics(req, res, next) {
     try {

@@ -10,6 +10,9 @@ router.patch('/users/:id/privacy', internalController.updatePrivacy);
 router.get('/users/:id/preferences', internalController.getPreferences);
 router.post('/users/:id/suspend', internalController.suspendUser);
 router.post('/users/:id/unsuspend', internalController.unsuspendUser);
+// H9: poner en revisión (llamado por friends service) y resolver (llamado por backoffice)
+router.post('/users/:id/under-review', internalController.putUserUnderReview);
+router.post('/users/:id/resolve-review', internalController.resolveUserReview);
 router.get('/metrics', internalController.getMetrics);
 
 module.exports = router;
