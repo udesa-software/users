@@ -218,7 +218,7 @@ const userService = {
   // Devuelve el perfil público de cualquier usuario (sin información privada)
   async getPublicProfile(userId) {
     const result = await userRepository.getUserDetail(userId);
-    if (!result) {
+    if (!result || result.deleted_at || result.is_suspended) {
       throw new AppError(410, 'Usuario no encontrado');
     }
     const fiveMinutesMs = 5 * 60 * 1000;
