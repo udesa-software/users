@@ -32,4 +32,8 @@ router.get('/search/public', authenticate, userController.searchUsersPublic);
 // La app móvil lo llama en background cada ~60s mientras está en uso.
 router.post('/heartbeat', authenticate, userController.heartbeat);
 
+// H8: Foto de perfil — subida y borrado
+router.post('/profile-photo', authenticate, userController.uploadProfilePhoto);
+router.delete('/profile-photo', authenticate, userController.deleteProfilePhoto);
+
 module.exports = router;
