@@ -1039,6 +1039,10 @@ describe('userService.uploadProfilePhoto & deleteProfilePhoto', () => {
 
       expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', null);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // userService.getPublicProfile
 // ---------------------------------------------------------------------------
 describe('userService.getPublicProfile', () => {

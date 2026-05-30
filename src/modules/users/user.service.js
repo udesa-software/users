@@ -353,7 +353,7 @@ const userService = {
     }
 
     await userRepository.updateProfilePhoto(userId, null);
-  // Devuelve el perfil público de cualquier usuario (sin información privada)
+  },  // Devuelve el perfil público de cualquier usuario (sin información privada)
   async getPublicProfile(userId) {
     const result = await userRepository.getUserDetail(userId);
     if (!result || result.deleted_at || result.is_suspended) {
