@@ -77,7 +77,7 @@ const userController = {
   },
 
   // H10 CA.1: actualiza last_seen_at del usuario autenticado. Llamado por la app
-  // en background cada ~60s para registrar actividad reciente.
+  // en background cada ~60s mientras está en uso.
   async heartbeat(req, res, next) {
     try {
       await userService.heartbeat(req.user.sub);
@@ -100,6 +100,11 @@ const userController = {
     try {
       await userService.deleteProfilePhoto(req.user.sub);
       res.status(200).json({ message: 'Foto de perfil eliminada correctamente.' });
+  // GET /api/users/:id/profile — devuelve el perfil público de cualquier usuario
+  async getPublicProfile(req, res, next) {
+    try {
+      const profile = await userService.getPublicProfile(req.params.id);
+      res.json(profile);
     } catch (err) {
       next(err);
     }

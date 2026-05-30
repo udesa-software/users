@@ -35,6 +35,7 @@ jest.mock('../../src/modules/users/user.repository', () => ({
     updateLastSeen: jest.fn(),
     getOnlineStatus: jest.fn(),
     updateProfilePhoto: jest.fn(),
+    getUserDetail: jest.fn(),
   },
 }));
 
@@ -1038,5 +1039,102 @@ describe('userService.uploadProfilePhoto & deleteProfilePhoto', () => {
 
       expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', null);
     });
+// userService.getPublicProfile
+// ---------------------------------------------------------------------------
+describe('userService.getPublicProfile', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('lanza error 410 si el usuario no existe', async () => {
+    userRepository.getUserDetail.mockResolvedValue(null);
+
+    await expect(userService.getPublicProfile('non-existent-id'))
+      .rejects.toMatchObject({ statusCode: 410, message: 'Usuario no encontrado' });
+    expect(userRepository.getUserDetail).toHaveBeenCalledWith('non-existent-id');
+  });
+
+  it('calcula is_online como true si last_seen_at es reciente (dentro de los 5 minutos)', async () => {
+    const recentTime = new Date(Date.now() - 2 * 60 * 1000).toISOString(); // 2 minutos atrás
+    userRepository.getUserDetail.mockResolvedValue({
+      id: 'uuid-1',
+      username: 'mateo',
+      biography: 'Hola udesa',
+      last_seen_at: recentTime,
+      password_hash: 'super_secret_hash',
+      email: 'sensitive@email.com',
+    });
+
+    const result = await userService.getPublicProfile('uuid-1');
+
+    expect(result).toEqual({
+      id: 'uuid-1',
+      username: 'mateo',
+      biography: 'Hola udesa',
+      is_online: true,
+      last_seen_at: recentTime,
+    });
+  });
+
+  it('calcula is_online como false si last_seen_at es antiguo (mayor a 5 minutos)', async () => {
+    const oldTime = new Date(Date.now() - 6 * 60 * 1000).toISOString(); // 6 minutos atrás
+    userRepository.getUserDetail.mockResolvedValue({
+      id: 'uuid-1',
+      username: 'mateo',
+      biography: 'Hola udesa',
+      last_seen_at: oldTime,
+      password_hash: 'super_secret_hash',
+      email: 'sensitive@email.com',
+    });
+
+    const result = await userService.getPublicProfile('uuid-1');
+
+    expect(result.is_online).toBe(false);
+  });
+
+  it('calcula is_online como false si last_seen_at es nulo', async () => {
+    userRepository.getUserDetail.mockResolvedValue({
+      id: 'uuid-1',
+      username: 'mateo',
+      biography: 'Hola udesa',
+      last_seen_at: null,
+      password_hash: 'super_secret_hash',
+      email: 'sensitive@email.com',
+    });
+
+    const result = await userService.getPublicProfile('uuid-1');
+
+    expect(result.is_online).toBe(false);
+  });
+
+  it('no filtra ni expone campos sensibles del usuario (solo devuelve id, username, biography, is_online, last_seen_at)', async () => {
+    const recentTime = new Date().toISOString();
+    userRepository.getUserDetail.mockResolvedValue({
+      id: 'uuid-1',
+      username: 'mateo',
+      biography: 'Hola udesa',
+      last_seen_at: recentTime,
+      password_hash: 'super_secret_hash',
+      email: 'sensitive@email.com',
+      is_suspended: false,
+      deleted_at: null,
+      failed_login_attempts: 0,
+    });
+
+    const result = await userService.getPublicProfile('uuid-1');
+
+    expect(result).toEqual({
+      id: 'uuid-1',
+      username: 'mateo',
+      biography: 'Hola udesa',
+      is_online: true,
+      last_seen_at: recentTime,
+    });
+
+    expect(result.password_hash).toBeUndefined();
+    expect(result.email).toBeUndefined();
+    expect(result.is_suspended).toBeUndefined();
+    expect(result.deleted_at).toBeUndefined();
+    expect(result.failed_login_attempts).toBeUndefined();
   });
 });
