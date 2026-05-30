@@ -100,6 +100,11 @@ const userController = {
     try {
       await userService.deleteProfilePhoto(req.user.sub);
       res.status(200).json({ message: 'Foto de perfil eliminada correctamente.' });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   // GET /api/users/:id/profile — devuelve el perfil público de cualquier usuario
   async getPublicProfile(req, res, next) {
     try {
