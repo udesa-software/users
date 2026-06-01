@@ -451,6 +451,21 @@ const userRepository = {
     );
     return result.rows.map((r) => r.id);
   },
+  // AI service: devuelve usuarios activos con biografía no vacía, excluyendo los IDs indicados.
+  async getCandidates(excludeIds) {
+    const result = await query(
+      `SELECT u.id, u.username, p.biography
+       FROM users u
+       JOIN preferences p ON p.user_id = u.id
+       WHERE u.deleted_at IS NULL
+         AND u.is_suspended = FALSE
+         AND p.biography IS NOT NULL
+         AND trim(p.biography) != ''
+         AND u.id != ALL($1::uuid[])`,
+      [excludeIds]
+    );
+    return result.rows;
+  },
 };
 
 module.exports = { userRepository };
