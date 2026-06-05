@@ -305,7 +305,7 @@ const userRepository = {
     const result = await query(
       `SELECT u.id, u.username, u.email, u.is_verified, u.is_suspended,
               u.deleted_at, u.created_at, u.last_login_at,
-              u.failed_login_attempts, u.locked_until, u.last_seen_at,
+              u.failed_login_attempts, u.locked_until, u.last_seen_at, u.is_private,
               p.biography, p.search_radius_km, p.location_update_frequency
        FROM users u
        LEFT JOIN preferences p ON p.user_id = u.id
@@ -446,7 +446,8 @@ const userRepository = {
        WHERE id = ANY($1::uuid[])
          AND last_seen_at >= NOW() - INTERVAL '5 minutes'
          AND deleted_at IS NULL
-         AND is_suspended = FALSE`,
+         AND is_suspended = FALSE
+         AND is_private = FALSE`,
       [userIds]
     );
     return result.rows.map((r) => r.id);

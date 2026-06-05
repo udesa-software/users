@@ -212,7 +212,10 @@ const userService = {
 
   // H10 CA.1: actualiza la última actividad del usuario
   async heartbeat(userId) {
-    await userRepository.updateLastSeen(userId);
+    const user = await userRepository.getUserDetail(userId);
+    if (user && !user.is_private) {
+      await userRepository.updateLastSeen(userId);
+    }
   },
 
   // Devuelve el perfil público de cualquier usuario (sin información privada)
@@ -222,7 +225,7 @@ const userService = {
       throw new AppError(410, 'Usuario no encontrado');
     }
     const fiveMinutesMs = 5 * 60 * 1000;
-    const isOnline = result.last_seen_at
+    const isOnline = result.last_seen_at && !result.is_private
       ? (Date.now() - new Date(result.last_seen_at).getTime()) <= fiveMinutesMs
       : false;
     return {

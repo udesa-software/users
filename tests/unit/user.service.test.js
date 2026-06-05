@@ -774,6 +774,7 @@ describe('userService.searchUsersPublic', () => {
 describe('userService.heartbeat', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    userRepository.getUserDetail.mockResolvedValue({ id: 'user-uuid-1', is_private: false });
     userRepository.updateLastSeen.mockResolvedValue();
   });
 
@@ -783,10 +784,18 @@ describe('userService.heartbeat', () => {
     expect(userRepository.updateLastSeen).toHaveBeenCalledWith('user-uuid-1');
   });
 
-  it('llama a updateLastSeen exactamente una vez por heartbeat', async () => {
+  it('llama a updateLastSeen exactamente una vez por heartbeat si el usuario no es privado', async () => {
     await userService.heartbeat('user-uuid-1');
 
     expect(userRepository.updateLastSeen).toHaveBeenCalledTimes(1);
+  });
+
+  it('no llama a updateLastSeen si el usuario es privado', async () => {
+    userRepository.getUserDetail.mockResolvedValue({ id: 'user-uuid-1', is_private: true });
+
+    await userService.heartbeat('user-uuid-1');
+
+    expect(userRepository.updateLastSeen).not.toHaveBeenCalled();
   });
 
   it('propaga el error si updateLastSeen falla', async () => {
@@ -989,5 +998,28 @@ describe('userService.getPublicProfile', () => {
     expect(result.is_suspended).toBeUndefined();
     expect(result.deleted_at).toBeUndefined();
     expect(result.failed_login_attempts).toBeUndefined();
+  });
+
+  it('calcula is_online como false y mantiene last_seen_at si el usuario es privado (Modo Fantasma) aunque la ultima conexion sea reciente', async () => {
+    const recentTime = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    userRepository.getUserDetail.mockResolvedValue({
+      id: 'uuid-1',
+      username: 'mateo',
+      biography: 'Hola udesa',
+      last_seen_at: recentTime,
+      is_private: true,
+      password_hash: 'super_secret_hash',
+      email: 'sensitive@email.com',
+    });
+
+    const result = await userService.getPublicProfile('uuid-1');
+
+    expect(result).toEqual({
+      id: 'uuid-1',
+      username: 'mateo',
+      biography: 'Hola udesa',
+      is_online: false,
+      last_seen_at: recentTime,
+    });
   });
 });
