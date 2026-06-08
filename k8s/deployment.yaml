@@ -87,6 +87,16 @@ spec:
                 secretKeyRef:
                   name: users-secret
                   key: SMTP_FROM
+            - name: SUPABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: SUPABASE_URL
+            - name: SUPABASE_SERVICE_ROLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: SUPABASE_SERVICE_ROLE_KEY
           livenessProbe:
             httpGet:
               path: /health

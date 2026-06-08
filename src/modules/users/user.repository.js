@@ -369,7 +369,7 @@ const userRepository = {
   async findProfilesByIds(userIds) {
     if (!userIds.length) return [];
     const result = await query(
-      `SELECT id, username FROM users
+      `SELECT id, username, profile_photo_url FROM users
        WHERE id = ANY($1::uuid[])
          AND deleted_at IS NULL
          AND is_suspended = FALSE`,
@@ -420,7 +420,7 @@ const userRepository = {
   // H6: obtiene el perfil público del usuario (username + biography)
   async findProfileById(userId) {
     const result = await query(
-      `SELECT u.id, u.username, u.email, u.role_ as "role", p.biography
+      `SELECT u.id, u.username, u.email, u.role_ as "role", u.profile_photo_url, p.biography
        FROM users u
        LEFT JOIN preferences p ON p.user_id = u.id
        WHERE u.id = $1`,
@@ -451,6 +451,15 @@ const userRepository = {
       [userIds]
     );
     return result.rows.map((r) => r.id);
+  },
+
+  // H8: guarda la ruta de la foto de perfil del usuario en la DB.
+  // Si avatarUrl es null, significa que el usuario borró su foto.
+  async updateProfilePhoto(userId, profilePhotoUrl) {
+    await query(
+      `UPDATE users SET profile_photo_url = $2, updated_at = NOW() WHERE id = $1`,
+      [userId, profilePhotoUrl]
+    );
   },
 };
 
