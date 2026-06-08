@@ -87,6 +87,24 @@ const userController = {
     }
   },
 
+  async uploadProfilePhoto(req, res, next) {
+    try {
+      const profilePhotoUrl = await userService.uploadProfilePhoto(req.user.sub, req);
+      res.status(200).json({ profile_photo_url: profilePhotoUrl });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async deleteProfilePhoto(req, res, next) {
+    try {
+      await userService.deleteProfilePhoto(req.user.sub);
+      res.status(200).json({ message: 'Foto de perfil eliminada correctamente.' });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   // GET /api/users/:id/profile — devuelve el perfil público de cualquier usuario
   async getPublicProfile(req, res, next) {
     try {

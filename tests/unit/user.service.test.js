@@ -34,6 +34,7 @@ jest.mock('../../src/modules/users/user.repository', () => ({
     searchUsers: jest.fn(),
     updateLastSeen: jest.fn(),
     getOnlineStatus: jest.fn(),
+    updateProfilePhoto: jest.fn(),
     getUserDetail: jest.fn(),
   },
 }));
@@ -54,6 +55,19 @@ jest.mock('../../src/clients/friendsClient', () => ({
 
 jest.mock('bcryptjs');
 jest.mock('uuid');
+
+// Supabase — mock para que los unit tests no hagan llamadas reales al storage
+jest.mock('../../src/config/supabase', () => ({
+  supabase: {
+    storage: {
+      from: jest.fn(() => ({
+        upload: jest.fn().mockResolvedValue({ error: null }),
+        remove: jest.fn().mockResolvedValue({ error: null }),
+        getPublicUrl: jest.fn(() => ({ data: { publicUrl: 'https://test.supabase.co/storage/profile-photos/test.jpg' } })),
+      })),
+    },
+  },
+}));
 
 // Datos de prueba
 
@@ -774,6 +788,7 @@ describe('userService.searchUsersPublic', () => {
 describe('userService.heartbeat', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    userRepository.getUserDetail.mockResolvedValue({ id: 'user-uuid-1', is_private: false });
     userRepository.updateLastSeen.mockResolvedValue();
   });
 
@@ -783,10 +798,18 @@ describe('userService.heartbeat', () => {
     expect(userRepository.updateLastSeen).toHaveBeenCalledWith('user-uuid-1');
   });
 
-  it('llama a updateLastSeen exactamente una vez por heartbeat', async () => {
+  it('llama a updateLastSeen exactamente una vez por heartbeat si el usuario no es privado', async () => {
     await userService.heartbeat('user-uuid-1');
 
     expect(userRepository.updateLastSeen).toHaveBeenCalledTimes(1);
+  });
+
+  it('no llama a updateLastSeen si el usuario es privado', async () => {
+    userRepository.getUserDetail.mockResolvedValue({ id: 'user-uuid-1', is_private: true });
+
+    await userService.heartbeat('user-uuid-1');
+
+    expect(userRepository.updateLastSeen).not.toHaveBeenCalled();
   });
 
   it('propaga el error si updateLastSeen falla', async () => {
@@ -892,6 +915,143 @@ describe('internalController.getOnlineStatus', () => {
 });
 
 // ---------------------------------------------------------------------------
+// H8: Foto de Perfil — Upload & Delete Tests
+// ---------------------------------------------------------------------------
+const EventEmitter = require('events');
+
+class MockBusboy extends EventEmitter {
+  constructor(config) {
+    super();
+    MockBusboy.latestInstance = this;
+    this.limits = config.limits;
+  }
+}
+
+jest.mock('busboy', () => {
+  return jest.fn().mockImplementation((config) => {
+    return new MockBusboy(config);
+  });
+});
+
+describe('userService.uploadProfilePhoto & deleteProfilePhoto', () => {
+  let fakeReq;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    fakeReq = new EventEmitter();
+    fakeReq.pipe = jest.fn();
+    fakeReq.headers = { 'content-type': 'multipart/form-data; boundary=xxx' };
+  });
+
+  describe('userService.uploadProfilePhoto', () => {
+    it('falla si el formato no es JPG o PNG (CA.1)', async () => {
+      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
+      const busboy = MockBusboy.latestInstance;
+      const fileStream = new EventEmitter();
+      fileStream.resume = jest.fn();
+
+      busboy.emit('file', 'profilePhoto', fileStream, {
+        filename: 'malicious.sh',
+        encoding: '7bit',
+        mimeType: 'application/x-sh',
+      });
+      busboy.emit('finish');
+
+      await expect(promise).rejects.toThrow('Formato inválido. Solo JPG y PNG.');
+    });
+
+    it('falla si la imagen supera los 5MB (CA.2)', async () => {
+      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
+      const busboy = MockBusboy.latestInstance;
+      const fileStream = new EventEmitter();
+      fileStream.resume = jest.fn();
+
+      busboy.emit('file', 'profilePhoto', fileStream, {
+        filename: 'large.png',
+        encoding: '7bit',
+        mimeType: 'image/png',
+      });
+
+      // Primer chunk con magic numbers válidos pero luego supera 5MB
+      fileStream.emit('data', Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
+      fileStream.emit('data', Buffer.alloc(6 * 1024 * 1024));
+      fileStream.emit('end');
+      busboy.emit('finish');
+
+      await expect(promise).rejects.toThrow('La imagen no debe superar los 5MB.');
+    });
+
+    it('falla si los magic numbers del archivo no coinciden con PNG o JPG (CA.3)', async () => {
+      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
+      const busboy = MockBusboy.latestInstance;
+      const fileStream = new EventEmitter();
+      fileStream.resume = jest.fn();
+
+      busboy.emit('file', 'profilePhoto', fileStream, {
+        filename: 'fake.png',
+        encoding: '7bit',
+        mimeType: 'image/png',
+      });
+
+      // Magic numbers de un ejecutable ELF — deben rechazarse
+      fileStream.emit('data', Buffer.from([0x7F, 0x45, 0x4C, 0x46]));
+      fileStream.emit('end');
+      busboy.emit('finish');
+
+      await expect(promise).rejects.toThrow('El contenido real del archivo no es JPG ni PNG.');
+    });
+
+    it('sube exitosamente a Supabase y actualiza la DB si pasa todas las validaciones (CA.1-CA.4)', async () => {
+      userRepository.findProfileById.mockResolvedValue({ id: 'user-uuid-1', profile_photo_url: null });
+      userRepository.updateProfilePhoto.mockResolvedValue();
+
+      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
+      const busboy = MockBusboy.latestInstance;
+      const fileStream = new EventEmitter();
+      fileStream.resume = jest.fn();
+
+      busboy.emit('file', 'profilePhoto', fileStream, {
+        filename: 'perfil.png',
+        encoding: '7bit',
+        mimeType: 'image/png',
+      });
+
+      // Magic numbers PNG válidos
+      fileStream.emit('data', Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
+      fileStream.emit('end');
+      busboy.emit('finish');
+
+      const url = await promise;
+      expect(url).toContain('supabase');
+      expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', url);
+    });
+  });
+
+  describe('userService.deleteProfilePhoto', () => {
+    it('llama a Supabase remove y actualiza la DB a null si el usuario tiene foto (CA.4, CA.6)', async () => {
+      userRepository.findProfileById.mockResolvedValue({
+        id: 'user-uuid-1',
+        profile_photo_url: 'https://test.supabase.co/storage/v1/object/public/profile-photos/old.png',
+      });
+      userRepository.updateProfilePhoto.mockResolvedValue();
+
+      await userService.deleteProfilePhoto('user-uuid-1');
+
+      expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', null);
+    });
+
+    it('actualiza la DB a null aunque el usuario no tenga foto previa', async () => {
+      userRepository.findProfileById.mockResolvedValue({ id: 'user-uuid-1', profile_photo_url: null });
+      userRepository.updateProfilePhoto.mockResolvedValue();
+
+      await userService.deleteProfilePhoto('user-uuid-1');
+
+      expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', null);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // userService.getPublicProfile
 // ---------------------------------------------------------------------------
 describe('userService.getPublicProfile', () => {
@@ -989,5 +1149,28 @@ describe('userService.getPublicProfile', () => {
     expect(result.is_suspended).toBeUndefined();
     expect(result.deleted_at).toBeUndefined();
     expect(result.failed_login_attempts).toBeUndefined();
+  });
+
+  it('calcula is_online como false y mantiene last_seen_at si el usuario es privado (Modo Fantasma) aunque la ultima conexion sea reciente', async () => {
+    const recentTime = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    userRepository.getUserDetail.mockResolvedValue({
+      id: 'uuid-1',
+      username: 'mateo',
+      biography: 'Hola udesa',
+      last_seen_at: recentTime,
+      is_private: true,
+      password_hash: 'super_secret_hash',
+      email: 'sensitive@email.com',
+    });
+
+    const result = await userService.getPublicProfile('uuid-1');
+
+    expect(result).toEqual({
+      id: 'uuid-1',
+      username: 'mateo',
+      biography: 'Hola udesa',
+      is_online: false,
+      last_seen_at: recentTime,
+    });
   });
 });

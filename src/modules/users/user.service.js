@@ -13,6 +13,22 @@ function tokenExpiresAt() {
   return date;
 }
 
+function isValidMagicNumber(buffer) {
+  if (!buffer || buffer.length < 4) return false;
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+    return true;
+  }
+  if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+    return true;
+  }
+  return false;
+}
+
+const path = require('path');
+const Busboy = require('busboy');
+const { supabase } = require('../../config/supabase');
+const { env } = require('../../config/env');
+
 const userService = {
   async register(input) {
     // CA.7: normalize email and username to lowercase before any lookup
@@ -212,17 +228,142 @@ const userService = {
 
   // H10 CA.1: actualiza la última actividad del usuario
   async heartbeat(userId) {
-    await userRepository.updateLastSeen(userId);
+    const user = await userRepository.getUserDetail(userId);
+    if (user && !user.is_private) {
+      await userRepository.updateLastSeen(userId);
+    }
   },
 
-  // Devuelve el perfil público de cualquier usuario (sin información privada)
+  // H8 CA.7: procesa la subida en streaming con busboy — los chunks se
+  // validan a medida que llegan y se rechazan antes de ocupar RAM si no pasan.
+  // Solo el archivo válido y dentro del límite se sube a Supabase Storage.
+  async uploadProfilePhoto(userId, req) {
+    return new Promise((resolve, reject) => {
+      let busboy;
+      try {
+        busboy = Busboy({
+          headers: req.headers,
+          limits: { files: 1, fileSize: 5 * 1024 * 1024 }, // CA.2: corta el stream si pasa 5MB
+        });
+      } catch (err) {
+        return reject(new AppError(400, 'Fallo al inicializar parser: ' + err.message));
+      }
+
+      let fileEventFired = false;
+
+      busboy.on('file', (name, file, info) => {
+        fileEventFired = true;
+
+        // CA.1: validar extensión
+        const ext = path.extname(info.filename).toLowerCase();
+        if (!['.png', '.jpg', '.jpeg'].includes(ext)) {
+          file.resume();
+          return reject(new AppError(400, 'Formato inválido. Solo JPG y PNG.'));
+        }
+
+        const uniqueFilename = `${userId}-${Date.now()}${ext}`;
+        const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+        const chunks = [];
+        let totalBytes = 0;
+        let magicChecked = false;
+        let validationError = null;
+
+        file.on('data', (chunk) => {
+          if (validationError) return;
+
+          totalBytes += chunk.length;
+
+          // CA.2: rechazar en tiempo real si supera 5MB
+          if (totalBytes > 5 * 1024 * 1024) {
+            validationError = new AppError(400, 'La imagen no debe superar los 5MB.');
+            file.resume();
+            return;
+          }
+
+          // CA.3: validar magic numbers en el primer chunk
+          if (!magicChecked) {
+            magicChecked = true;
+            if (!isValidMagicNumber(chunk)) {
+              validationError = new AppError(400, 'El contenido real del archivo no es JPG ni PNG.');
+              file.resume();
+              return;
+            }
+          }
+
+          chunks.push(chunk);
+        });
+
+        file.on('limit', () => {
+          validationError = validationError || new AppError(400, 'La imagen no debe superar los 5MB.');
+          file.resume();
+        });
+
+        // 'end' se emite cuando el stream del archivo termina.
+        // La promesa se resuelve/rechaza ACÁ — no en 'finish' de busboy,
+        // porque 'finish' llega antes de que completen las operaciones async.
+        file.on('end', async () => {
+          if (validationError) return reject(validationError);
+
+          try {
+            const buffer = Buffer.concat(chunks);
+
+            // CA.4: eliminar foto anterior si existía
+            const user = await userRepository.findProfileById(userId);
+            if (user?.profile_photo_url) {
+              const old = path.basename(user.profile_photo_url.split('?')[0]);
+              await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).remove([old]);
+            }
+
+            // Subir a Supabase Storage
+            const { error: uploadErr } = await supabase.storage
+              .from(env.SUPABASE_STORAGE_BUCKET)
+              .upload(uniqueFilename, buffer, { contentType: mimeType, upsert: true });
+
+            if (uploadErr) throw new AppError(500, 'Error al subir: ' + uploadErr.message);
+
+            const { data } = supabase.storage
+              .from(env.SUPABASE_STORAGE_BUCKET)
+              .getPublicUrl(uniqueFilename);
+
+            await userRepository.updateProfilePhoto(userId, data.publicUrl);
+            resolve(data.publicUrl);
+          } catch (err) {
+            reject(err);
+          }
+        });
+      });
+
+      // 'finish' solo maneja el caso en que no llegó ningún archivo
+      busboy.on('finish', () => {
+        if (!fileEventFired) reject(new AppError(400, 'No se subió ningún archivo.'));
+      });
+
+      busboy.on('error', reject);
+      req.pipe(busboy);
+    });
+  },
+
+  // H8 CA.4/CA.6: elimina la foto de perfil de Supabase Storage y limpia la URL en DB
+  async deleteProfilePhoto(userId) {
+    const user = await userRepository.findProfileById(userId);
+    if (!user) {
+      throw new AppError(410, 'Usuario no encontrado');
+    }
+
+    if (user.profile_photo_url) {
+      const filename = path.basename(user.profile_photo_url.split('?')[0]);
+      await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).remove([filename]);
+    }
+
+    await userRepository.updateProfilePhoto(userId, null);
+  },  // Devuelve el perfil público de cualquier usuario (sin información privada)
   async getPublicProfile(userId) {
     const result = await userRepository.getUserDetail(userId);
     if (!result || result.deleted_at || result.is_suspended) {
       throw new AppError(410, 'Usuario no encontrado');
     }
     const fiveMinutesMs = 5 * 60 * 1000;
-    const isOnline = result.last_seen_at
+    const isOnline = result.last_seen_at && !result.is_private
       ? (Date.now() - new Date(result.last_seen_at).getTime()) <= fiveMinutesMs
       : false;
     return {

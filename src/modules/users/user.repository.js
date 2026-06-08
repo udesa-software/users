@@ -305,7 +305,7 @@ const userRepository = {
     const result = await query(
       `SELECT u.id, u.username, u.email, u.is_verified, u.is_suspended,
               u.deleted_at, u.created_at, u.last_login_at,
-              u.failed_login_attempts, u.locked_until, u.last_seen_at,
+              u.failed_login_attempts, u.locked_until, u.last_seen_at, u.is_private,
               p.biography, p.search_radius_km, p.location_update_frequency
        FROM users u
        LEFT JOIN preferences p ON p.user_id = u.id
@@ -369,7 +369,7 @@ const userRepository = {
   async findProfilesByIds(userIds) {
     if (!userIds.length) return [];
     const result = await query(
-      `SELECT id, username FROM users
+      `SELECT id, username, profile_photo_url FROM users
        WHERE id = ANY($1::uuid[])
          AND deleted_at IS NULL
          AND is_suspended = FALSE`,
@@ -420,7 +420,7 @@ const userRepository = {
   // H6: obtiene el perfil público del usuario (username + biography)
   async findProfileById(userId) {
     const result = await query(
-      `SELECT u.id, u.username, u.email, u.role_ as "role", p.biography
+      `SELECT u.id, u.username, u.email, u.role_ as "role", u.profile_photo_url, p.biography
        FROM users u
        LEFT JOIN preferences p ON p.user_id = u.id
        WHERE u.id = $1`,
@@ -446,7 +446,8 @@ const userRepository = {
        WHERE id = ANY($1::uuid[])
          AND last_seen_at >= NOW() - INTERVAL '5 minutes'
          AND deleted_at IS NULL
-         AND is_suspended = FALSE`,
+         AND is_suspended = FALSE
+         AND is_private = FALSE`,
       [userIds]
     );
     return result.rows.map((r) => r.id);
@@ -465,6 +466,14 @@ const userRepository = {
       [excludeIds]
     );
     return result.rows;
+
+  // H8: guarda la ruta de la foto de perfil del usuario en la DB.
+  // Si avatarUrl es null, significa que el usuario borró su foto.
+  async updateProfilePhoto(userId, profilePhotoUrl) {
+    await query(
+      `UPDATE users SET profile_photo_url = $2, updated_at = NOW() WHERE id = $1`,
+      [userId, profilePhotoUrl]
+    );
   },
 };
 
