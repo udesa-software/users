@@ -61,6 +61,7 @@ jobs:
           files: ./coverage/lcov.info
           flags: unit
           fail_ci_if_error: true
+          skip_validation: true
 
       - name: Run integration tests
         run: npm run test:integration:coverage
@@ -81,7 +82,8 @@ jobs:
           files: ./coverage-integration/lcov.info
           flags: integration
           fail_ci_if_error: true
-
+          skip_validation: true
+          
       - name: Test summary
         if: always()
         uses: actions/github-script@v8
