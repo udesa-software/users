@@ -127,6 +127,19 @@ const internalController = {
       next(err);
     }
   },
+
+  async getCandidates(req, res, next) {
+    try {
+      const { excludeIds } = req.body;
+      if (!Array.isArray(excludeIds)) {
+        throw new AppError(400, 'excludeIds debe ser un array');
+      }
+      const candidates = await userRepository.getCandidates(excludeIds);
+      res.json(candidates);
+    } catch (err) {
+      next(err);
+    }
+  },
 };
 
 module.exports = { internalController };
