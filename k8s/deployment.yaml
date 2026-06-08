@@ -97,6 +97,11 @@ spec:
                 secretKeyRef:
                   name: users-secret
                   key: SUPABASE_SERVICE_ROLE_KEY
+            - name: SUPABASE_STORAGE_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: SUPABASE_STORAGE_BUCKET
           livenessProbe:
             httpGet:
               path: /health
