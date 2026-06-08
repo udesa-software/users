@@ -466,6 +466,7 @@ const userRepository = {
       [excludeIds]
     );
     return result.rows;
+  },
 
   // H8: guarda la ruta de la foto de perfil del usuario en la DB.
   // Si avatarUrl es null, significa que el usuario borró su foto.
