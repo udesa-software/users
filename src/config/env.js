@@ -39,6 +39,11 @@ const envSchema = z.object({
 
   // Desactivar SSL para postgres (útil en entornos locales/Docker)
   DB_SSL: z.string().default('true'),
+
+  // Supabase Storage (para fotos de perfil)
+  SUPABASE_URL: z.string().url(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string(),
+  SUPABASE_STORAGE_BUCKET: z.string().default('profile-photos'),
 });
 
 const parsed = envSchema.safeParse(process.env);
