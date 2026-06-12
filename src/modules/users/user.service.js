@@ -4,6 +4,7 @@ const { userRepository } = require('./user.repository');
 const { sendVerificationEmail } = require('../../config/mailer');
 const { AppError } = require('../../middlewares/errorHandler');
 const { friendsClient } = require('../../clients/friendsClient');
+const { logger } = require('../../observability/logger');
 
 const TOKEN_EXPIRY_HOURS = 24;
 
@@ -72,8 +73,10 @@ const userService = {
 
     // Send email fire-and-forget (don't block registration on mail failure)
     sendVerificationEmail(email, verifyToken).catch((err) =>
-      console.error('Failed to send verification email:', err)
+      logger.error({ err: err.message, event: 'user.verification_email_failed', userId: user.id }, 'user.verification_email_failed')
     );
+
+    logger.info({ event: 'user.registered', userId: user.id }, 'user.registered');
 
     return user;
   },
@@ -99,6 +102,8 @@ const userService = {
     if (process.env.FRIENDS_SERVICE_URL) {
       await friendsClient.deleteUserRelationships(userId);
     }
+
+    logger.info({ event: 'user.deleted', userId }, 'user.deleted');
   },
 
   async getPreferences(userId) {
@@ -147,19 +152,14 @@ const userService = {
     const user = await userRepository.findByEmail(normalizedEmail);
     const genericMessage = 'Si el correo está registrado y aún no fue verificado, recibirás un nuevo email pronto.';
 
-    if (!user) {
-      console.log(`[UserService] Reenviar verificación: email no encontrado (${normalizedEmail})`);
-      return { message: genericMessage };
-    }
-    if (user.is_verified) {
-      console.log(`[UserService] Reenviar verificación: email ya verificado (${normalizedEmail})`);
+    if (!user || user.is_verified) {
       return { message: genericMessage };
     }
     const newToken = uuidv4();
     const expiresAt = tokenExpiresAt();
     await userRepository.updateVerifyToken(user.id, newToken, expiresAt);
     sendVerificationEmail(normalizedEmail, newToken).catch((err) =>
-      console.error('Failed to send verification email:', err)
+      logger.error({ err: err.message, event: 'user.verification_email_failed', userId: user.id }, 'user.verification_email_failed')
     );
 
     return { message: genericMessage };
