@@ -4,6 +4,9 @@ const { userRepository } = require('./user.repository');
 const { sendVerificationEmail } = require('../../config/mailer');
 const { AppError } = require('../../middlewares/errorHandler');
 const { friendsClient } = require('../../clients/friendsClient');
+const { aiClient } = require('../../clients/aiClient');
+const { notificationsClient } = require('../../clients/notificationsClient');
+
 const { logger } = require('../../observability/logger');
 
 const TOKEN_EXPIRY_HOURS = 24;
@@ -103,8 +106,11 @@ const userService = {
       await friendsClient.deleteUserRelationships(userId);
     }
 
+    // Cleanup: Limpiar token de notificaciones push
+    notificationsClient.clearToken(userId);
     logger.info({ event: 'user.deleted', userId }, 'user.deleted');
   },
+
 
   async getPreferences(userId) {
     const prefs = await userRepository.getPreferences(userId);
@@ -196,6 +202,11 @@ const userService = {
 
       const updatedPref = await userRepository.updateBiography(userId, sanitized);
       updates.biography = updatedPref.biography;
+
+      // Pre-compute embedding en ai-service (fire-and-forget: no bloquea la respuesta)
+      aiClient.updateBiographyEmbedding(userId, sanitized).catch((err) =>
+        console.error('[UserService] Failed to trigger embedding update:', err.message)
+      );
     }
 
     return updates; // CA.6: retorna los nuevos valores para actualizar el estado global
