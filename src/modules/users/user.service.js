@@ -5,6 +5,8 @@ const { sendVerificationEmail } = require('../../config/mailer');
 const { AppError } = require('../../middlewares/errorHandler');
 const { friendsClient } = require('../../clients/friendsClient');
 const { aiClient } = require('../../clients/aiClient');
+const { notificationsClient } = require('../../clients/notificationsClient');
+
 
 const TOKEN_EXPIRY_HOURS = 24;
 
@@ -100,7 +102,11 @@ const userService = {
     if (process.env.FRIENDS_SERVICE_URL) {
       await friendsClient.deleteUserRelationships(userId);
     }
+
+    // Cleanup: Limpiar token de notificaciones push
+    notificationsClient.clearToken(userId);
   },
+
 
   async getPreferences(userId) {
     const prefs = await userRepository.getPreferences(userId);

@@ -30,6 +30,7 @@ const envSchema = z.object({
 
   // URL del servicio de friends (H4 CA.2/CA.4: eliminar relaciones al borrar cuenta)
   FRIENDS_SERVICE_URL: z.string().url().optional(),
+  NOTIFICATIONS_SERVICE_URL: z.string().url().optional(),
 
   // URL del servicio de notifications
   NOTIFICATIONS_SERVICE_URL: z.string().url().optional(),

@@ -2,6 +2,8 @@ const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { userRepository } = require('../users/user.repository');
+const { notificationsClient } = require('../../clients/notificationsClient');
+
 const { sendResetPasswordEmail, sendPasswordChangedEmail, sendVerificationEmail } = require('../../config/mailer');
 const { AppError } = require('../../middlewares/errorHandler');
 const { env } = require('../../config/env');
@@ -203,7 +205,12 @@ const authService = {
     // Invalida el access token actual inmediatamente (H3 CA.1)
     const { token_version } = await userRepository.incrementTokenVersion(userId);
     publishRevocation(userId, token_version);
+
+    // CA.3/Logout: Limpiar token de notificaciones push (no bloqueante)
+    notificationsClient.clearToken(userId);
+
     return { message: 'Sesión cerrada exitosamente.' };
+
   },
 
   async verifyResetToken(token) {
