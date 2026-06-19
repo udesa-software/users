@@ -8,6 +8,7 @@ const { sendResetPasswordEmail, sendPasswordChangedEmail, sendVerificationEmail 
 const { AppError } = require('../../middlewares/errorHandler');
 const { env } = require('../../config/env');
 const { redisClient } = require('../../config/redis');
+const { logger } = require('../../observability/logger');
 
 const REVOKED_TTL_SEC = 15 * 60; // matches AT lifetime
 
@@ -27,7 +28,6 @@ const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 const authService = {
   async login({ identifier, password }) {
-    console.log(`[AuthService] Intento de login para: ${identifier}`);
     // CA.3: support email or username
     let user = null;
     if (identifier.includes('@')) {
@@ -38,20 +38,21 @@ const authService = {
 
     // CA.3: mismo mensaje genérico para "no existe" y "contraseña incorrecta"
     if (!user) {
-      console.log(`[AuthService] Login fallido: usuario no encontrado (${identifier})`);
+      // No loggeamos el identifier — puede contener email/contraseña real si el usuario se equivocó de campo
+      logger.warn({ event: 'auth.login_failed', reason: 'user_not_found' }, 'auth.login_failed');
       throw new AppError(401, 'Credenciales inválidas');
     }
 
     // CA.5: cuenta eliminada (soft-delete) o suspendida por admin
     if (user.deleted_at || user.is_suspended) {
-      console.log(`[AuthService] Login fallido: cuenta suspendida o eliminada (${user.username})`);
+      logger.warn({ event: 'auth.login_failed', reason: 'account_suspended', userId: user.id }, 'auth.login_failed');
       throw new AppError(401, 'Cuenta suspendida');
     }
 
     // CA.2: cuenta bloqueada por demasiados intentos fallidos
     if (user.locked_until) {
       if (new Date(user.locked_until) > new Date()) {
-        console.log(`[AuthService] Login fallido: cuenta bloqueada (${user.username})`);
+        logger.warn({ event: 'auth.login_failed', reason: 'account_locked', userId: user.id, locked_until: user.locked_until }, 'auth.login_failed');
         throw new AppError(423, `Cuenta bloqueada temporalmente. Intentá de nuevo en ${Math.ceil((user.locked_until - new Date()) / 60000)} minutos.`);
       }
       // El bloqueo expiró: resetear contador para que no se re-bloquee con 1 solo error
@@ -60,7 +61,7 @@ const authService = {
 
     // CA.4: email no verificado
     if (!user.is_verified) {
-      console.log(`[AuthService] Login detenido: email no verificado (${user.username})`);
+      logger.warn({ event: 'auth.login_failed', reason: 'email_not_verified', userId: user.id }, 'auth.login_failed');
       throw new AppError(412, 'Debés verificar tu email antes de iniciar sesión. Revisá tu casilla de correo.');
     }
 
@@ -68,6 +69,7 @@ const authService = {
     if (!passwordMatch) {
       // CA.2: incrementa el contador; si llega a 5 se bloquea automáticamente en la DB
       await userRepository.incrementFailedAttempts(user.id, 5);
+      logger.warn({ event: 'auth.login_failed', reason: 'wrong_password', userId: user.id }, 'auth.login_failed');
       throw new AppError(401, 'Credenciales inválidas');
     }
 
@@ -89,6 +91,8 @@ const authService = {
 
     // H6: Fetch full profile to get biography
     const userProfile = await userRepository.findProfileById(user.id);
+
+    logger.info({ event: 'auth.login_success', userId: user.id }, 'auth.login_success');
 
     return {
       accessToken,
@@ -166,6 +170,8 @@ const authService = {
     await userRepository.deleteAllRefreshTokensForUser(user.id);
     publishRevocation(user.id, token_version);
 
+    logger.info({ event: 'auth.password_reset_completed', userId: user.id }, 'auth.password_reset_completed');
+
     return { message: 'Tu contraseña ha sido actualizada con éxito. Por favor, iniciá sesión de nuevo.' };
   },
 
@@ -209,6 +215,7 @@ const authService = {
     // CA.3/Logout: Limpiar token de notificaciones push (no bloqueante)
     notificationsClient.clearToken(userId);
 
+    logger.info({ event: 'auth.logout', userId }, 'auth.logout');
     return { message: 'Sesión cerrada exitosamente.' };
 
   },
@@ -297,12 +304,10 @@ const authService = {
     const genericMessage = 'Si el correo o usuario está registrado y aún no fue verificado, recibirás un nuevo email pronto.';
 
     if (!user) {
-      console.log(`[AuthService] Reenviar verificación: identificador no encontrado (${identifier})`);
       return { message: genericMessage };
     }
 
     if (user.is_verified) {
-      console.log(`[AuthService] Reenviar verificación: usuario ya verificado (${user.username})`);
       return { message: genericMessage };
     }
 
@@ -312,9 +317,8 @@ const authService = {
 
     await userRepository.updateVerifyToken(user.id, newToken, newExpiresAt);
 
-    console.log(`[AuthService] Reenviando verificación para user: ${user.username}, email: ${user.email}`);
     sendVerificationEmail(user.email, newToken).catch((err) =>
-      console.error('Failed to resend verification email:', err)
+      logger.error({ err: err.message, event: 'auth.verification_email_failed', userId: user.id }, 'auth.verification_email_failed')
     );
 
     return { message: genericMessage };
