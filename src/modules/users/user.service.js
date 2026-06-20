@@ -270,6 +270,8 @@ const userService = {
 
         // Create a PassThrough stream to pipe to Supabase
         const passThrough = new PassThrough();
+        // Evitar unhandled 'error' event si se destruye el stream antes de que Supabase lo consuma
+        passThrough.on('error', () => {});
 
         // 1. Remove old photo before uploading the new one
         userRepository.findProfileById(userId).then(async (user) => {
