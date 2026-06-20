@@ -1,6 +1,8 @@
 const { userRepository } = require('./user.repository');
 const { redisClient } = require('../../config/redis');
 const { AppError } = require('../../middlewares/errorHandler');
+const { notificationsClient } = require('../../clients/notificationsClient');
+
 
 const REVOKED_TTL_SEC = 15 * 60;
 
@@ -46,7 +48,11 @@ const internalController = {
       redisClient.set(`revoked:${id}`, token_version, 'EX', REVOKED_TTL_SEC)
         .catch((err) => console.error('[Redis] suspend revocation failed:', err));
 
+      // Cleanup: Limpiar token de notificaciones push
+      notificationsClient.clearToken(id);
+
       res.json({ message: 'Usuario suspendido. Su sesión fue invalidada.' });
+
     } catch (err) {
       next(err);
     }
@@ -123,6 +129,19 @@ const internalController = {
       }
       const onlineIds = await userRepository.getOnlineStatus(userIds);
       res.json({ onlineIds });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async getCandidates(req, res, next) {
+    try {
+      const { excludeIds } = req.body;
+      if (!Array.isArray(excludeIds)) {
+        throw new AppError(400, 'excludeIds debe ser un array');
+      }
+      const candidates = await userRepository.getCandidates(excludeIds);
+      res.json(candidates);
     } catch (err) {
       next(err);
     }
