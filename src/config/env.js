@@ -26,13 +26,17 @@ const envSchema = z.object({
 
   INITIAL_SUPERADMIN_EMAIL: z.string().email().optional(),
   INITIAL_SUPERADMIN_TEMP_PASSWORD: z.string().optional(),
-  
+
 
   // URL del servicio de friends (H4 CA.2/CA.4: eliminar relaciones al borrar cuenta)
   FRIENDS_SERVICE_URL: z.string().url().optional(),
+  NOTIFICATIONS_SERVICE_URL: z.string().url().optional(),
 
   // URL del servicio de notifications
   NOTIFICATIONS_SERVICE_URL: z.string().url().optional(),
+
+  // URL del servicio de AI (para pre-compute de embeddings)
+  AI_SERVICE_URL: z.string().url().optional(),
 
   // Secreto compartido para comunicación interna entre microservicios
   INTERNAL_SECRET: z.string().optional(),
