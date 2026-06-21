@@ -273,31 +273,31 @@ const userService = {
         // Evitar unhandled 'error' event si se destruye el stream antes de que Supabase lo consuma
         passThrough.on('error', () => {});
 
-        // 1. Remove old photo before uploading the new one
-        userRepository.findProfileById(userId).then(async (user) => {
+        // Arrancar el upload a Supabase — los chunks llegan por passThrough en tiempo real.
+        // El borrado de la foto vieja se hace DESPUÉS de que el upload termina exitosamente
+        // para no perderla si la validación falla (tamaño, magic numbers, etc).
+        const uploadPromise = supabase.storage
+          .from(env.SUPABASE_STORAGE_BUCKET)
+          .upload(uniqueFilename, passThrough, { contentType: mimeType, upsert: true, duplex: 'half' });
+
+        uploadPromise.then(async ({ error: uploadErr }) => {
+          if (uploadErr) {
+            return reject(new AppError(500, 'Error al subir: ' + uploadErr.message));
+          }
+
+          const { data } = supabase.storage
+            .from(env.SUPABASE_STORAGE_BUCKET)
+            .getPublicUrl(uniqueFilename);
+
+          // Borrar la foto vieja solo si el upload fue exitoso
+          const user = await userRepository.findProfileById(userId);
           if (user?.profile_photo_url) {
             const old = path.basename(user.profile_photo_url.split('?')[0]);
             await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).remove([old]);
           }
 
-          // 2. Start the Supabase upload, passing the PassThrough stream directly
-          const uploadPromise = supabase.storage
-            .from(env.SUPABASE_STORAGE_BUCKET)
-            .upload(uniqueFilename, passThrough, { contentType: mimeType, upsert: true, duplex: 'half' });
-            
-          uploadPromise.then(async ({ error: uploadErr }) => {
-            if (uploadErr) {
-              return reject(new AppError(500, 'Error al subir: ' + uploadErr.message));
-            }
-
-            const { data } = supabase.storage
-              .from(env.SUPABASE_STORAGE_BUCKET)
-              .getPublicUrl(uniqueFilename);
-
-            await userRepository.updateProfilePhoto(userId, data.publicUrl);
-            resolve(data.publicUrl);
-          }).catch(reject);
-
+          await userRepository.updateProfilePhoto(userId, data.publicUrl);
+          resolve(data.publicUrl);
         }).catch(reject);
 
 
