@@ -30,6 +30,7 @@ function isValidMagicNumber(buffer) {
 
 const path = require('path');
 const Busboy = require('busboy');
+const { PassThrough } = require('stream');
 const { supabase } = require('../../config/supabase');
 const { env } = require('../../config/env');
 
@@ -274,10 +275,42 @@ const userService = {
 
         const uniqueFilename = `${userId}-${Date.now()}${ext}`;
         const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
-        const chunks = [];
         let totalBytes = 0;
         let magicChecked = false;
         let validationError = null;
+
+        // Create a PassThrough stream to pipe to Supabase
+        const passThrough = new PassThrough();
+        // Evitar unhandled 'error' event si se destruye el stream antes de que Supabase lo consuma
+        passThrough.on('error', () => {});
+
+        // Arrancar el upload a Supabase — los chunks llegan por passThrough en tiempo real.
+        // El borrado de la foto vieja se hace DESPUÉS de que el upload termina exitosamente
+        // para no perderla si la validación falla (tamaño, magic numbers, etc).
+        const uploadPromise = supabase.storage
+          .from(env.SUPABASE_STORAGE_BUCKET)
+          .upload(uniqueFilename, passThrough, { contentType: mimeType, upsert: true, duplex: 'half' });
+
+        uploadPromise.then(async ({ error: uploadErr }) => {
+          if (uploadErr) {
+            return reject(new AppError(500, 'Error al subir: ' + uploadErr.message));
+          }
+
+          const { data } = supabase.storage
+            .from(env.SUPABASE_STORAGE_BUCKET)
+            .getPublicUrl(uniqueFilename);
+
+          // Borrar la foto vieja solo si el upload fue exitoso
+          const user = await userRepository.findProfileById(userId);
+          if (user?.profile_photo_url) {
+            const old = path.basename(user.profile_photo_url.split('?')[0]);
+            await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).remove([old]);
+          }
+
+          await userRepository.updateProfilePhoto(userId, data.publicUrl);
+          resolve(data.publicUrl);
+        }).catch(reject);
+
 
         file.on('data', (chunk) => {
           if (validationError) return;
@@ -287,8 +320,9 @@ const userService = {
           // CA.2: rechazar en tiempo real si supera 5MB
           if (totalBytes > 5 * 1024 * 1024) {
             validationError = new AppError(400, 'La imagen no debe superar los 5MB.');
+            passThrough.destroy(validationError);
             file.resume();
-            return;
+            return reject(validationError);
           }
 
           // CA.3: validar magic numbers en el primer chunk
@@ -296,51 +330,28 @@ const userService = {
             magicChecked = true;
             if (!isValidMagicNumber(chunk)) {
               validationError = new AppError(400, 'El contenido real del archivo no es JPG ni PNG.');
+              passThrough.destroy(validationError);
               file.resume();
-              return;
+              return reject(validationError);
             }
           }
 
-          chunks.push(chunk);
+          // Pass the chunk directly to the PassThrough stream
+          passThrough.write(chunk);
         });
 
         file.on('limit', () => {
           validationError = validationError || new AppError(400, 'La imagen no debe superar los 5MB.');
+          passThrough.destroy(validationError);
           file.resume();
+          reject(validationError);
         });
 
         // 'end' se emite cuando el stream del archivo termina.
-        // La promesa se resuelve/rechaza ACÁ — no en 'finish' de busboy,
-        // porque 'finish' llega antes de que completen las operaciones async.
-        file.on('end', async () => {
-          if (validationError) return reject(validationError);
-
-          try {
-            const buffer = Buffer.concat(chunks);
-
-            // CA.4: eliminar foto anterior si existía
-            const user = await userRepository.findProfileById(userId);
-            if (user?.profile_photo_url) {
-              const old = path.basename(user.profile_photo_url.split('?')[0]);
-              await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).remove([old]);
-            }
-
-            // Subir a Supabase Storage
-            const { error: uploadErr } = await supabase.storage
-              .from(env.SUPABASE_STORAGE_BUCKET)
-              .upload(uniqueFilename, buffer, { contentType: mimeType, upsert: true });
-
-            if (uploadErr) throw new AppError(500, 'Error al subir: ' + uploadErr.message);
-
-            const { data } = supabase.storage
-              .from(env.SUPABASE_STORAGE_BUCKET)
-              .getPublicUrl(uniqueFilename);
-
-            await userRepository.updateProfilePhoto(userId, data.publicUrl);
-            resolve(data.publicUrl);
-          } catch (err) {
-            reject(err);
-          }
+        file.on('end', () => {
+          if (validationError) return;
+          // Signal the end of the PassThrough stream so Supabase knows it's done
+          passThrough.end();
         });
       });
 

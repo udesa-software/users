@@ -961,6 +961,7 @@ describe('userService.uploadProfilePhoto & deleteProfilePhoto', () => {
     });
 
     it('falla si la imagen supera los 5MB (CA.2)', async () => {
+      userRepository.findProfileById.mockResolvedValue({ id: 'user-uuid-1', profile_photo_url: null });
       const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
       const busboy = MockBusboy.latestInstance;
       const fileStream = new EventEmitter();
@@ -982,6 +983,7 @@ describe('userService.uploadProfilePhoto & deleteProfilePhoto', () => {
     });
 
     it('falla si los magic numbers del archivo no coinciden con PNG o JPG (CA.3)', async () => {
+      userRepository.findProfileById.mockResolvedValue({ id: 'user-uuid-1', profile_photo_url: null });
       const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
       const busboy = MockBusboy.latestInstance;
       const fileStream = new EventEmitter();
