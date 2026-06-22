@@ -351,12 +351,26 @@ const userRepository = {
     return result.rows[0] ?? null;
   },
 
-  // H9: levanta el estado "en revisión" (acción de un administrador, vía backoffice)
+  // H9: levanta el estado "en revisión" (acción de un administrador, vía backoffice).
+  // Sella under_review_resolved_at para que friends solo cuente denuncias posteriores
+  // a esta fecha la próxima vez que evalúe el umbral de revisión.
   async clearUnderReview(userId) {
     await query(
-      `UPDATE users SET under_review = FALSE, updated_at = NOW() WHERE id = $1`,
+      `UPDATE users
+       SET under_review = FALSE, under_review_resolved_at = NOW(), updated_at = NOW()
+       WHERE id = $1`,
       [userId]
     );
+  },
+
+  // H9: usado por friends para saber desde cuándo contar denuncias nuevas.
+  // null si la cuenta nunca pasó por un ciclo de revisión.
+  async getUnderReviewResolvedAt(userId) {
+    const result = await query(
+      `SELECT under_review_resolved_at FROM users WHERE id = $1`,
+      [userId]
+    );
+    return result.rows[0]?.under_review_resolved_at ?? null;
   },
 
   // H3: métricas para el dashboard (totales, altas del mes, últimos 7 días)

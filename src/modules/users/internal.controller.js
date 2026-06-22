@@ -116,6 +116,17 @@ const internalController = {
     }
   },
 
+  // H9: consultado por friends antes de contar denunciantes distintos, para no recontar
+  // denuncias previas a la última vez que un admin resolvió el caso de este usuario.
+  async getReviewStatus(req, res, next) {
+    try {
+      const underReviewResolvedAt = await userRepository.getUnderReviewResolvedAt(req.params.id);
+      res.json({ underReviewResolvedAt });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   // H5-friends: devuelve username de un batch de userIds (para el radar de descubrimiento en location)
   async getBatchProfiles(req, res, next) {
     try {

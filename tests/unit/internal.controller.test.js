@@ -9,6 +9,7 @@ jest.mock('../../src/modules/users/user.repository', () => ({
     flagUnderReview: jest.fn(),
     clearUnderReview: jest.fn(),
     deleteAllRefreshTokensForUser: jest.fn(),
+    getUnderReviewResolvedAt: jest.fn(),
   },
 }));
 
@@ -100,5 +101,40 @@ describe('internalController.resolveReview', () => {
     expect(res.json).toHaveBeenCalledWith({
       message: 'Revisión resuelta. El usuario puede volver a iniciar sesión.',
     });
+  });
+});
+
+describe('internalController.getReviewStatus', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('devuelve underReviewResolvedAt cuando el usuario ya fue resuelto antes', async () => {
+    const resolvedAt = '2026-06-22T10:00:00.000Z';
+    userRepository.getUnderReviewResolvedAt.mockResolvedValue(resolvedAt);
+    const res = makeRes();
+
+    await internalController.getReviewStatus(makeReq(), res, makeNext());
+
+    expect(userRepository.getUnderReviewResolvedAt).toHaveBeenCalledWith(USER_ID);
+    expect(res.json).toHaveBeenCalledWith({ underReviewResolvedAt: resolvedAt });
+  });
+
+  it('devuelve underReviewResolvedAt null cuando la cuenta nunca fue resuelta', async () => {
+    userRepository.getUnderReviewResolvedAt.mockResolvedValue(null);
+    const res = makeRes();
+
+    await internalController.getReviewStatus(makeReq(), res, makeNext());
+
+    expect(res.json).toHaveBeenCalledWith({ underReviewResolvedAt: null });
+  });
+
+  it('llama a next con el error si el repositorio rechaza', async () => {
+    userRepository.getUnderReviewResolvedAt.mockRejectedValue(new Error('DB error'));
+    const next = makeNext();
+
+    await internalController.getReviewStatus(makeReq(), makeRes(), next);
+
+    expect(next).toHaveBeenCalledWith(expect.any(Error));
   });
 });
