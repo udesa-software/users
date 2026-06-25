@@ -7,6 +7,7 @@ const { AppError: AppErrorInternal } = require('../../src/middlewares/errorHandl
 const { sendVerificationEmail } = require('../../src/config/mailer');
 const { AppError } = require('../../src/middlewares/errorHandler');
 const { friendsClient } = require('../../src/clients/friendsClient');
+const { aiClient } = require('../../src/clients/aiClient');
 
 // Reemplazamos los módulos reales por versiones falsas que controlamos.
 // Usamos factory functions (el () => ...) para que Jest nunca llegue a
@@ -55,6 +56,12 @@ jest.mock('../../src/clients/friendsClient', () => ({
 
 jest.mock('bcryptjs');
 jest.mock('uuid');
+
+jest.mock('../../src/clients/aiClient', () => ({
+  aiClient: {
+    updateBiographyEmbedding: jest.fn().mockResolvedValue(),
+  },
+}));
 
 // Supabase — mock para que los unit tests no hagan llamadas reales al storage
 jest.mock('../../src/config/supabase', () => ({
@@ -935,12 +942,16 @@ jest.mock('busboy', () => {
 
 describe('userService.uploadProfilePhoto & deleteProfilePhoto', () => {
   let fakeReq;
+  let supabaseMock;
+  let BusboyMock;
 
   beforeEach(() => {
     jest.clearAllMocks();
     fakeReq = new EventEmitter();
     fakeReq.pipe = jest.fn();
     fakeReq.headers = { 'content-type': 'multipart/form-data; boundary=xxx' };
+    supabaseMock = require('../../src/config/supabase').supabase;
+    BusboyMock = require('busboy');
   });
 
   describe('userService.uploadProfilePhoto', () => {
@@ -1027,6 +1038,95 @@ describe('userService.uploadProfilePhoto & deleteProfilePhoto', () => {
       expect(url).toContain('supabase');
       expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', url);
     });
+
+    it('sube exitosamente una imagen JPG válida (magic numbers JPG, línea 26)', async () => {
+      userRepository.findProfileById.mockResolvedValue({ id: 'user-uuid-1', profile_photo_url: null });
+      userRepository.updateProfilePhoto.mockResolvedValue();
+
+      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
+      const busboy = MockBusboy.latestInstance;
+      const fileStream = new EventEmitter();
+      fileStream.resume = jest.fn();
+
+      busboy.emit('file', 'profilePhoto', fileStream, {
+        filename: 'perfil.jpg',
+        encoding: '7bit',
+        mimeType: 'image/jpeg',
+      });
+
+      fileStream.emit('data', Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]));
+      fileStream.emit('end');
+      busboy.emit('finish');
+
+      const url = await promise;
+      expect(url).toContain('supabase');
+      expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', url);
+    });
+
+    it('rechaza con 400 si busboy no puede inicializarse (cabecera Content-Type inválida)', async () => {
+      BusboyMock.mockImplementationOnce(() => { throw new Error('Content-Type inválido'); });
+
+      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
+
+      await expect(promise).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('rechaza con 500 si Supabase devuelve error durante el upload', async () => {
+      supabaseMock.storage.from.mockReturnValueOnce({
+        upload: jest.fn().mockResolvedValue({ error: { message: 'Storage quota exceeded' } }),
+        remove: jest.fn().mockResolvedValue({ error: null }),
+        getPublicUrl: jest.fn(() => ({ data: { publicUrl: 'https://test.supabase.co/test.jpg' } })),
+      });
+
+      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
+      const busboy = MockBusboy.latestInstance;
+      const fileStream = new EventEmitter();
+      fileStream.resume = jest.fn();
+
+      busboy.emit('file', 'profilePhoto', fileStream, { filename: 'foto.png', encoding: '7bit', mimeType: 'image/png' });
+      fileStream.emit('data', Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
+      fileStream.emit('end');
+      busboy.emit('finish');
+
+      await expect(promise).rejects.toMatchObject({ statusCode: 500 });
+    });
+
+    it('elimina la foto anterior cuando el usuario ya tenía una (CA.5 — borra la vieja)', async () => {
+      userRepository.findProfileById.mockResolvedValue({
+        id: 'user-uuid-1',
+        profile_photo_url: 'https://test.supabase.co/storage/v1/object/public/profile-photos/old-photo.png?v=1',
+      });
+      userRepository.updateProfilePhoto.mockResolvedValue();
+
+      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
+      const busboy = MockBusboy.latestInstance;
+      const fileStream = new EventEmitter();
+      fileStream.resume = jest.fn();
+
+      busboy.emit('file', 'profilePhoto', fileStream, { filename: 'nueva.png', encoding: '7bit', mimeType: 'image/png' });
+      fileStream.emit('data', Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
+      fileStream.emit('end');
+      busboy.emit('finish');
+
+      await promise;
+      // upload + getPublicUrl + remove (foto vieja) = 3 llamadas a from()
+      expect(supabaseMock.storage.from).toHaveBeenCalledTimes(3);
+      expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', expect.any(String));
+    });
+
+    it('rechaza con 400 cuando busboy dispara el evento limit por tamaño excedido', async () => {
+      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
+      const busboy = MockBusboy.latestInstance;
+      const fileStream = new EventEmitter();
+      fileStream.resume = jest.fn();
+
+      busboy.emit('file', 'profilePhoto', fileStream, { filename: 'grande.png', encoding: '7bit', mimeType: 'image/png' });
+      fileStream.emit('data', Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
+      fileStream.emit('limit');
+      busboy.emit('finish');
+
+      await expect(promise).rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('5MB') });
+    });
   });
 
   describe('userService.deleteProfilePhoto', () => {
@@ -1049,6 +1149,13 @@ describe('userService.uploadProfilePhoto & deleteProfilePhoto', () => {
       await userService.deleteProfilePhoto('user-uuid-1');
 
       expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', null);
+    });
+
+    it('lanza 410 si el usuario no existe (CA.6)', async () => {
+      userRepository.findProfileById.mockResolvedValue(null);
+
+      await expect(userService.deleteProfilePhoto('no-existe')).rejects.toMatchObject({ statusCode: 410 });
+      expect(userRepository.updateProfilePhoto).not.toHaveBeenCalled();
     });
   });
 });
