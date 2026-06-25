@@ -155,6 +155,15 @@ describe('authService.login', () => {
     ).rejects.toMatchObject({ statusCode: 401 });
   });
 
+  // H9 CA.4: cuenta en revisión por denuncias
+  it('lanza error 401 si la cuenta está en revisión por denuncias', async () => {
+    userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, under_review: true });
+
+    await expect(
+      authService.login({ identifier: 'test@example.com', password: 'Password1' })
+    ).rejects.toMatchObject({ statusCode: 401 });
+  });
+
   it('lanza error 423 si la cuenta está bloqueada por intentos fallidos', async () => {
     userRepository.findByEmail.mockResolvedValue({ ...USUARIO_DB, locked_until: BLOQUEADO_HASTA });
 
@@ -472,6 +481,14 @@ describe('authService.refreshToken', () => {
 
   it('lanza error 403 si la cuenta está suspendida', async () => {
     userRepository.findById.mockResolvedValue({ ...USUARIO_DB, is_suspended: true });
+
+    await expect(authService.refreshToken('valid-uuid-token'))
+      .rejects.toMatchObject({ statusCode: 401 });
+  });
+
+  // H9 CA.4: un refresh token viejo no puede renovar la sesión si la cuenta está en revisión
+  it('lanza error 401 si la cuenta está en revisión', async () => {
+    userRepository.findById.mockResolvedValue({ ...USUARIO_DB, under_review: true });
 
     await expect(authService.refreshToken('valid-uuid-token'))
       .rejects.toMatchObject({ statusCode: 401 });

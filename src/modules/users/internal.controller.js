@@ -73,6 +73,60 @@ const internalController = {
     }
   },
 
+  // H9: marca la cuenta en revisión tras superar el umbral de denuncias (llamado por friends) —
+  // invalida la sesión activa de inmediato (CA.4), igual que suspendUser.
+  async flagReview(req, res, next) {
+    try {
+      const { id } = req.params;
+      const user = await userRepository.findById(id);
+      if (!user) throw new AppError(410, 'Usuario no encontrado');
+      if (user.under_review) {
+        return res.json({ message: 'El usuario ya está en revisión.' });
+      }
+
+      const updated = await userRepository.flagUnderReview(id);
+      if (!updated) {
+        return res.json({ message: 'El usuario ya está en revisión.' });
+      }
+
+      await userRepository.deleteAllRefreshTokensForUser(id);
+      redisClient.set(`revoked:${id}`, updated.token_version, 'EX', REVOKED_TTL_SEC)
+        .catch((err) => console.error('[Redis] flag-review revocation failed:', err));
+
+      notificationsClient.clearToken(id);
+
+      res.json({ message: 'Usuario marcado en revisión. Su sesión fue invalidada.' });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // H9: un administrador resuelve la revisión desde el backoffice
+  async resolveReview(req, res, next) {
+    try {
+      const { id } = req.params;
+      const user = await userRepository.findById(id);
+      if (!user) throw new AppError(410, 'Usuario no encontrado');
+      if (!user.under_review) throw new AppError(400, 'El usuario no está en revisión');
+
+      await userRepository.clearUnderReview(id);
+      res.json({ message: 'Revisión resuelta. El usuario puede volver a iniciar sesión.' });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // H9: consultado por friends antes de contar denunciantes distintos, para no recontar
+  // denuncias previas a la última vez que un admin resolvió el caso de este usuario.
+  async getReviewStatus(req, res, next) {
+    try {
+      const underReviewResolvedAt = await userRepository.getUnderReviewResolvedAt(req.params.id);
+      res.json({ underReviewResolvedAt });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   // H5-friends: devuelve username de un batch de userIds (para el radar de descubrimiento en location)
   async getBatchProfiles(req, res, next) {
     try {

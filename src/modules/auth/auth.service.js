@@ -49,6 +49,12 @@ const authService = {
       throw new AppError(401, 'Cuenta suspendida');
     }
 
+    // H9 CA.4: cuenta en revisión por denuncias — bloqueada hasta que un admin la resuelva
+    if (user.under_review) {
+      logger.warn({ event: 'auth.login_failed', reason: 'account_under_review', userId: user.id }, 'auth.login_failed');
+      throw new AppError(401, 'Tu cuenta está en revisión. Un administrador debe resolver tu caso antes de que puedas volver a iniciar sesión.');
+    }
+
     // CA.2: cuenta bloqueada por demasiados intentos fallidos
     if (user.locked_until) {
       if (new Date(user.locked_until) > new Date()) {
@@ -193,6 +199,11 @@ const authService = {
 
     if (user.deleted_at || user.is_suspended) {
       throw new AppError(401, 'Cuenta suspendida');
+    }
+
+    // H9 CA.4: una sesión vieja no puede renovarse mientras la cuenta esté en revisión
+    if (user.under_review) {
+      throw new AppError(401, 'Tu cuenta está en revisión. Un administrador debe resolver tu caso antes de que puedas volver a iniciar sesión.');
     }
 
     const accessToken = jwt.sign(

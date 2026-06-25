@@ -268,7 +268,7 @@ const userRepository = {
     }
 
     const result = await query(
-      `SELECT u.id, u.username, u.email, u.is_verified, u.is_suspended,
+      `SELECT u.id, u.username, u.email, u.is_verified, u.is_suspended, u.under_review,
               u.deleted_at, u.created_at, u.last_login_at,
               u.failed_login_attempts, u.locked_until
        FROM users u
@@ -303,7 +303,7 @@ const userRepository = {
   // H4 CA.1: detalle completo de un usuario para el panel de admin
   async getUserDetail(userId) {
     const result = await query(
-      `SELECT u.id, u.username, u.email, u.is_verified, u.is_suspended,
+      `SELECT u.id, u.username, u.email, u.is_verified, u.is_suspended, u.under_review,
               u.deleted_at, u.created_at, u.last_login_at,
               u.failed_login_attempts, u.locked_until, u.last_seen_at, u.is_private,
               p.biography, p.search_radius_km, p.location_update_frequency
@@ -334,6 +334,43 @@ const userRepository = {
       `UPDATE users SET is_suspended = FALSE, updated_at = NOW() WHERE id = $1`,
       [userId]
     );
+  },
+
+  // H9: marca la cuenta "en revisión" tras superar el umbral de denuncias — invalida sesión (CA.4)
+  // WHERE under_review = FALSE hace la llamada idempotente ante invocaciones duplicadas.
+  async flagUnderReview(userId) {
+    const result = await query(
+      `UPDATE users
+       SET under_review = TRUE,
+           token_version = token_version + 1,
+           updated_at = NOW()
+       WHERE id = $1 AND under_review = FALSE
+       RETURNING token_version`,
+      [userId]
+    );
+    return result.rows[0] ?? null;
+  },
+
+  // H9: levanta el estado "en revisión" (acción de un administrador, vía backoffice).
+  // Sella under_review_resolved_at para que friends solo cuente denuncias posteriores
+  // a esta fecha la próxima vez que evalúe el umbral de revisión.
+  async clearUnderReview(userId) {
+    await query(
+      `UPDATE users
+       SET under_review = FALSE, under_review_resolved_at = NOW(), updated_at = NOW()
+       WHERE id = $1`,
+      [userId]
+    );
+  },
+
+  // H9: usado por friends para saber desde cuándo contar denuncias nuevas.
+  // null si la cuenta nunca pasó por un ciclo de revisión.
+  async getUnderReviewResolvedAt(userId) {
+    const result = await query(
+      `SELECT under_review_resolved_at FROM users WHERE id = $1`,
+      [userId]
+    );
+    return result.rows[0]?.under_review_resolved_at ?? null;
   },
 
   // H3: métricas para el dashboard (totales, altas del mes, últimos 7 días)
