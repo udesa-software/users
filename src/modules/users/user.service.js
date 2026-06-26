@@ -29,8 +29,6 @@ function isValidMagicNumber(buffer) {
 }
 
 const path = require('path');
-const Busboy = require('busboy');
-const { PassThrough } = require('stream');
 const { supabase } = require('../../config/supabase');
 const { env } = require('../../config/env');
 
