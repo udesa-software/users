@@ -111,6 +111,7 @@ const authService = {
         created_at: user.created_at,
         role: userProfile ? userProfile.role : 'user',
         biography: userProfile ? userProfile.biography : null,
+        profile_photo_url: userProfile ? userProfile.profile_photo_url : null,
       },
     };
   },
