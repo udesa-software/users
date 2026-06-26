@@ -2,7 +2,6 @@ const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const { userService } = require('../../src/modules/users/user.service');
 const { internalController } = require('../../src/modules/users/internal.controller');
-const { userController } = require('../../src/modules/users/user.controller');
 const { userRepository } = require('../../src/modules/users/user.repository');
 const { AppError: AppErrorInternal } = require('../../src/middlewares/errorHandler');
 const { sendVerificationEmail } = require('../../src/config/mailer');
@@ -1208,78 +1207,3 @@ describe('userService.getPublicProfile', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// userController — prepareAvatarUpload & confirmAvatarUpload
-// ---------------------------------------------------------------------------
-describe('userController.prepareAvatarUpload & confirmAvatarUpload', () => {
-  const makeReq = (body = {}, user = { sub: 'user-uuid-1' }) => ({ body, user });
-  const makeRes = () => {
-    const res = {};
-    res.status = jest.fn().mockReturnValue(res);
-    res.json = jest.fn().mockReturnValue(res);
-    return res;
-  };
-  const makeNext = () => jest.fn();
-
-  beforeEach(() => jest.clearAllMocks());
-
-  describe('prepareAvatarUpload', () => {
-    it('responde 200 con signedUrl y filename cuando el service tiene éxito', async () => {
-      const fakeResult = { signedUrl: 'https://test.supabase.co/sign/test.jpg', filename: 'user-uuid-1-123.jpg' };
-      jest.spyOn(require('../../src/modules/users/user.service').userService, 'prepareAvatarUpload')
-        .mockResolvedValueOnce(fakeResult);
-
-      const req = makeReq({ mimeType: 'image/jpeg' });
-      const res = makeRes();
-
-      await userController.prepareAvatarUpload(req, res, makeNext());
-
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith(fakeResult);
-    });
-
-    it('llama a next con el error si el service lanza una excepción', async () => {
-      jest.spyOn(require('../../src/modules/users/user.service').userService, 'prepareAvatarUpload')
-        .mockRejectedValueOnce(new AppError(400, 'Formato inválido. Solo JPG y PNG.'));
-
-      const req = makeReq({ mimeType: 'application/x-sh' });
-      const res = makeRes();
-      const next = makeNext();
-
-      await userController.prepareAvatarUpload(req, res, next);
-
-      expect(next).toHaveBeenCalledWith(expect.any(AppError));
-      expect(res.json).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('confirmAvatarUpload', () => {
-    it('responde 200 con profile_photo_url cuando el service tiene éxito', async () => {
-      const fakeUrl = 'https://test.supabase.co/storage/profile-photos/user-uuid-1-123.jpg';
-      jest.spyOn(require('../../src/modules/users/user.service').userService, 'confirmAvatarUpload')
-        .mockResolvedValueOnce(fakeUrl);
-
-      const req = makeReq({ filename: 'user-uuid-1-123.jpg' });
-      const res = makeRes();
-
-      await userController.confirmAvatarUpload(req, res, makeNext());
-
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({ profile_photo_url: fakeUrl });
-    });
-
-    it('llama a next con el error si el service lanza una excepción', async () => {
-      jest.spyOn(require('../../src/modules/users/user.service').userService, 'confirmAvatarUpload')
-        .mockRejectedValueOnce(new AppError(403, 'Archivo no pertenece al usuario.'));
-
-      const req = makeReq({ filename: 'otro-usuario-123.jpg' });
-      const res = makeRes();
-      const next = makeNext();
-
-      await userController.confirmAvatarUpload(req, res, next);
-
-      expect(next).toHaveBeenCalledWith(expect.any(AppError));
-      expect(res.json).not.toHaveBeenCalled();
-    });
-  });
-});

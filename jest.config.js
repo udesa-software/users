@@ -3,6 +3,7 @@ module.exports = {
   setupFiles: ['<rootDir>/src/tests/setupEnv.js'],
   collectCoverageFrom: [
     'src/modules/users/user.service.js',
+    'src/modules/users/user.controller.js',
     'src/modules/auth/auth.service.js',
   ],
   coverageThreshold: {
