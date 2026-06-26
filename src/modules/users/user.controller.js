@@ -87,10 +87,21 @@ const userController = {
     }
   },
 
-  async uploadProfilePhoto(req, res, next) {
+  async prepareAvatarUpload(req, res, next) {
     try {
-      const profilePhotoUrl = await userService.uploadProfilePhoto(req.user.sub, req.body);
-      res.status(200).json({ profile_photo_url: profilePhotoUrl });
+      const { mimeType } = req.body;
+      const result = await userService.prepareAvatarUpload(req.user.sub, mimeType);
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async confirmAvatarUpload(req, res, next) {
+    try {
+      const { filename } = req.body;
+      const url = await userService.confirmAvatarUpload(req.user.sub, filename);
+      res.status(200).json({ profile_photo_url: url });
     } catch (err) {
       next(err);
     }
