@@ -89,7 +89,7 @@ const userController = {
 
   async uploadProfilePhoto(req, res, next) {
     try {
-      const profilePhotoUrl = await userService.uploadProfilePhoto(req.user.sub, req);
+      const profilePhotoUrl = await userService.uploadProfilePhoto(req.user.sub, req.body);
       res.status(200).json({ profile_photo_url: profilePhotoUrl });
     } catch (err) {
       next(err);
