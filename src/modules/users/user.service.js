@@ -244,46 +244,56 @@ const userService = {
     }
   },
 
-  // H8: recibe la foto como base64 JSON (evita proxies/WAF que bloquean multipart).
-  // CA.2: límite de 5MB aplicado sobre el buffer decodificado (no el string base64).
-  // CA.3: magic numbers validados sobre el buffer antes de subir a Supabase.
-  async uploadProfilePhoto(userId, { photo, mimeType }) {
-    if (!photo) throw new AppError(400, 'No se recibió ninguna foto.');
-
+  // H8 paso 1: genera una signed URL para que el cliente suba directo a Supabase,
+  // evitando el AWS WAF del ALB que bloquea bodies grandes.
+  async prepareAvatarUpload(userId, mimeType) {
     const ALLOWED_MIME = ['image/jpeg', 'image/jpg', 'image/png'];
     if (!ALLOWED_MIME.includes(mimeType)) {
       throw new AppError(400, 'Formato inválido. Solo JPG y PNG.');
     }
+    const ext = mimeType === 'image/png' ? '.png' : '.jpg';
+    const filename = `${userId}-${Date.now()}${ext}`;
 
-    // CA.2: validar tamaño sobre el buffer real (base64 infla ~33%)
-    const buffer = Buffer.from(photo, 'base64');
-    if (buffer.length > 5 * 1024 * 1024) {
-      throw new AppError(400, 'La imagen no debe superar los 5MB.');
+    const { data, error } = await supabase.storage
+      .from(env.SUPABASE_STORAGE_BUCKET)
+      .createSignedUploadUrl(filename);
+
+    if (error) throw new AppError(500, 'Error al generar URL de subida: ' + error.message);
+    return { signedUrl: data.signedUrl, filename };
+  },
+
+  // H8 paso 2: el cliente ya subió a Supabase; validamos el archivo y actualizamos DB.
+  // CA.2: límite de 5MB sobre el buffer real. CA.3: magic numbers.
+  async confirmAvatarUpload(userId, filename) {
+    if (!filename || !filename.startsWith(`${userId}-`)) {
+      throw new AppError(403, 'Archivo no pertenece al usuario.');
     }
 
-    // CA.3: magic numbers
+    const { data: fileBlob, error: dlErr } = await supabase.storage
+      .from(env.SUPABASE_STORAGE_BUCKET)
+      .download(filename);
+
+    if (dlErr) throw new AppError(400, 'No se encontró el archivo. Reintentá la subida.');
+
+    const buffer = Buffer.from(await fileBlob.arrayBuffer());
+
+    if (buffer.length > 5 * 1024 * 1024) {
+      await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).remove([filename]);
+      throw new AppError(400, 'La imagen no debe superar los 5MB.');
+    }
     if (!isValidMagicNumber(buffer)) {
+      await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).remove([filename]);
       throw new AppError(400, 'El contenido real del archivo no es JPG ni PNG.');
     }
 
-    const ext = mimeType === 'image/png' ? '.png' : '.jpg';
-    const uniqueFilename = `${userId}-${Date.now()}${ext}`;
+    const { data } = supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).getPublicUrl(filename);
 
-    const { error: uploadErr } = await supabase.storage
-      .from(env.SUPABASE_STORAGE_BUCKET)
-      .upload(uniqueFilename, buffer, { contentType: mimeType, upsert: true });
-
-    if (uploadErr) throw new AppError(500, 'Error al subir: ' + uploadErr.message);
-
-    const { data } = supabase.storage
-      .from(env.SUPABASE_STORAGE_BUCKET)
-      .getPublicUrl(uniqueFilename);
-
-    // Borrar la foto vieja solo si el upload fue exitoso
     const user = await userRepository.findProfileById(userId);
     if (user?.profile_photo_url) {
       const old = path.basename(user.profile_photo_url.split('?')[0]);
-      await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).remove([old]);
+      if (old !== filename) {
+        await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).remove([old]);
+      }
     }
 
     await userRepository.updateProfilePhoto(userId, data.publicUrl);

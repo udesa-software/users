@@ -71,6 +71,11 @@ jest.mock('../../src/config/supabase', () => ({
         upload: jest.fn().mockResolvedValue({ error: null }),
         remove: jest.fn().mockResolvedValue({ error: null }),
         getPublicUrl: jest.fn(() => ({ data: { publicUrl: 'https://test.supabase.co/storage/profile-photos/test.jpg' } })),
+        createSignedUploadUrl: jest.fn().mockResolvedValue({
+          data: { signedUrl: 'https://test.supabase.co/storage/v1/upload/sign/bucket/user-uuid-1-123.jpg', token: 'abc' },
+          error: null,
+        }),
+        download: jest.fn().mockResolvedValue({ data: null, error: null }),
       })),
     },
   },
@@ -946,17 +951,47 @@ describe('userService.uploadProfilePhoto & deleteProfilePhoto', () => {
     supabaseMock = require('../../src/config/supabase').supabase;
   });
 
-  describe('userService.uploadProfilePhoto', () => {
-    it('falla con 400 si no se recibe foto', async () => {
-      await expect(
-        userService.uploadProfilePhoto('user-uuid-1', { photo: undefined, mimeType: 'image/png' })
-      ).rejects.toMatchObject({ statusCode: 400 });
-    });
-
+  describe('userService.prepareAvatarUpload', () => {
     it('falla si el mimeType no es JPG o PNG (CA.1)', async () => {
       await expect(
-        userService.uploadProfilePhoto('user-uuid-1', { photo: pngBase64(), mimeType: 'application/x-sh' })
+        userService.prepareAvatarUpload('user-uuid-1', 'application/x-sh')
       ).rejects.toThrow('Formato inválido. Solo JPG y PNG.');
+    });
+
+    it('devuelve signedUrl y filename para mimeType válido', async () => {
+      const result = await userService.prepareAvatarUpload('user-uuid-1', 'image/png');
+      expect(result.signedUrl).toContain('supabase');
+      expect(result.filename).toMatch(/^user-uuid-1-\d+\.png$/);
+    });
+
+    it('rechaza con 500 si Supabase falla al crear la signed URL', async () => {
+      supabaseMock.storage.from.mockReturnValueOnce({
+        createSignedUploadUrl: jest.fn().mockResolvedValue({ data: null, error: { message: 'Storage unavailable' } }),
+      });
+      await expect(
+        userService.prepareAvatarUpload('user-uuid-1', 'image/jpeg')
+      ).rejects.toMatchObject({ statusCode: 500 });
+    });
+  });
+
+  describe('userService.confirmAvatarUpload', () => {
+    const makeBlobMock = (buffer) => ({
+      arrayBuffer: () => Promise.resolve(buffer),
+    });
+
+    it('falla con 403 si el filename no pertenece al usuario (CA.security)', async () => {
+      await expect(
+        userService.confirmAvatarUpload('user-uuid-1', 'otro-usuario-123.png')
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('falla si Supabase no encuentra el archivo subido', async () => {
+      supabaseMock.storage.from.mockReturnValueOnce({
+        download: jest.fn().mockResolvedValue({ data: null, error: { message: 'Not found' } }),
+      });
+      await expect(
+        userService.confirmAvatarUpload('user-uuid-1', 'user-uuid-1-123.png')
+      ).rejects.toThrow('No se encontró el archivo');
     });
 
     it('falla si la imagen supera los 5MB (CA.2)', async () => {
@@ -964,59 +999,54 @@ describe('userService.uploadProfilePhoto & deleteProfilePhoto', () => {
         Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
         Buffer.alloc(6 * 1024 * 1024),
       ]);
+      supabaseMock.storage.from.mockReturnValueOnce({
+        download: jest.fn().mockResolvedValue({ data: makeBlobMock(bigBuffer), error: null }),
+        remove: jest.fn().mockResolvedValue({ error: null }),
+      });
       await expect(
-        userService.uploadProfilePhoto('user-uuid-1', { photo: bigBuffer.toString('base64'), mimeType: 'image/png' })
+        userService.confirmAvatarUpload('user-uuid-1', 'user-uuid-1-123.png')
       ).rejects.toThrow('La imagen no debe superar los 5MB.');
     });
 
     it('falla si los magic numbers no coinciden con PNG o JPG (CA.3)', async () => {
+      const elfBuffer = Buffer.from([0x7F, 0x45, 0x4C, 0x46, 0x00]);
+      supabaseMock.storage.from.mockReturnValueOnce({
+        download: jest.fn().mockResolvedValue({ data: makeBlobMock(elfBuffer), error: null }),
+        remove: jest.fn().mockResolvedValue({ error: null }),
+      });
       await expect(
-        userService.uploadProfilePhoto('user-uuid-1', { photo: elfBase64(), mimeType: 'image/png' })
+        userService.confirmAvatarUpload('user-uuid-1', 'user-uuid-1-123.png')
       ).rejects.toThrow('El contenido real del archivo no es JPG ni PNG.');
     });
 
-    it('sube exitosamente una imagen PNG y actualiza la DB (CA.1-CA.4)', async () => {
+    it('confirma exitosamente una imagen PNG y actualiza la DB (CA.1-CA.4)', async () => {
+      const pngBuffer = Buffer.concat([Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), Buffer.alloc(100)]);
+      supabaseMock.storage.from
+        .mockReturnValueOnce({ download: jest.fn().mockResolvedValue({ data: makeBlobMock(pngBuffer), error: null }) })
+        .mockReturnValueOnce({ getPublicUrl: jest.fn(() => ({ data: { publicUrl: 'https://test.supabase.co/storage/profile-photos/test.jpg' } })) });
       userRepository.findProfileById.mockResolvedValue({ id: 'user-uuid-1', profile_photo_url: null });
       userRepository.updateProfilePhoto.mockResolvedValue();
 
-      const url = await userService.uploadProfilePhoto('user-uuid-1', { photo: pngBase64(), mimeType: 'image/png' });
+      const url = await userService.confirmAvatarUpload('user-uuid-1', 'user-uuid-1-123.png');
 
       expect(url).toContain('supabase');
       expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', url);
-    });
-
-    it('sube exitosamente una imagen JPG válida (magic numbers JPG)', async () => {
-      userRepository.findProfileById.mockResolvedValue({ id: 'user-uuid-1', profile_photo_url: null });
-      userRepository.updateProfilePhoto.mockResolvedValue();
-
-      const url = await userService.uploadProfilePhoto('user-uuid-1', { photo: jpgBase64(), mimeType: 'image/jpeg' });
-
-      expect(url).toContain('supabase');
-      expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', url);
-    });
-
-    it('rechaza con 500 si Supabase devuelve error durante el upload', async () => {
-      supabaseMock.storage.from.mockReturnValueOnce({
-        upload: jest.fn().mockResolvedValue({ error: { message: 'Storage quota exceeded' } }),
-        remove: jest.fn().mockResolvedValue({ error: null }),
-        getPublicUrl: jest.fn(() => ({ data: { publicUrl: 'https://test.supabase.co/test.jpg' } })),
-      });
-
-      await expect(
-        userService.uploadProfilePhoto('user-uuid-1', { photo: pngBase64(), mimeType: 'image/png' })
-      ).rejects.toMatchObject({ statusCode: 500 });
     });
 
     it('elimina la foto anterior cuando el usuario ya tenía una (CA.5)', async () => {
+      const pngBuffer = Buffer.concat([Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), Buffer.alloc(100)]);
+      supabaseMock.storage.from
+        .mockReturnValueOnce({ download: jest.fn().mockResolvedValue({ data: makeBlobMock(pngBuffer), error: null }) })
+        .mockReturnValueOnce({ getPublicUrl: jest.fn(() => ({ data: { publicUrl: 'https://test.supabase.co/storage/profile-photos/test.jpg' } })) })
+        .mockReturnValueOnce({ remove: jest.fn().mockResolvedValue({ error: null }) });
       userRepository.findProfileById.mockResolvedValue({
         id: 'user-uuid-1',
         profile_photo_url: 'https://test.supabase.co/storage/v1/object/public/profile-photos/old-photo.png?v=1',
       });
       userRepository.updateProfilePhoto.mockResolvedValue();
 
-      await userService.uploadProfilePhoto('user-uuid-1', { photo: pngBase64(), mimeType: 'image/png' });
+      await userService.confirmAvatarUpload('user-uuid-1', 'user-uuid-1-123.png');
 
-      // upload + getPublicUrl + remove (foto vieja) = 3 llamadas a from()
       expect(supabaseMock.storage.from).toHaveBeenCalledTimes(3);
       expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', expect.any(String));
     });
@@ -1176,3 +1206,4 @@ describe('userService.getPublicProfile', () => {
     });
   });
 });
+
