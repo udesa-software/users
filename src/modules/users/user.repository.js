@@ -306,6 +306,7 @@ const userRepository = {
       `SELECT u.id, u.username, u.email, u.is_verified, u.is_suspended, u.under_review,
               u.deleted_at, u.created_at, u.last_login_at,
               u.failed_login_attempts, u.locked_until, u.last_seen_at, u.is_private,
+              u.profile_photo_url,
               p.biography, p.search_radius_km, p.location_update_frequency
        FROM users u
        LEFT JOIN preferences p ON p.user_id = u.id
@@ -428,7 +429,7 @@ const userRepository = {
     const offset = (page - 1) * limit;
     const pattern = `%${search}%`;
     const result = await query(
-      `SELECT id, username FROM users
+      `SELECT id, username, profile_photo_url FROM users
        WHERE username ILIKE $1
          AND is_suspended = FALSE
          AND deleted_at IS NULL
@@ -492,7 +493,7 @@ const userRepository = {
   // AI service: devuelve usuarios activos con biografía no vacía, excluyendo los IDs indicados.
   async getCandidates(excludeIds) {
     const result = await query(
-      `SELECT u.id, u.username, p.biography
+      `SELECT u.id, u.username, u.profile_photo_url, p.biography
        FROM users u
        JOIN preferences p ON p.user_id = u.id
        WHERE u.deleted_at IS NULL

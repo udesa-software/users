@@ -32,8 +32,7 @@ router.get('/search/public', authenticate, userController.searchUsersPublic);
 // La app móvil lo llama en background cada ~60s mientras está en uso.
 router.post('/heartbeat', authenticate, userController.heartbeat);
 
-// H8: Foto de perfil — flujo 2 pasos para evitar AWS WAF del ALB.
-// El cliente sube directo a Supabase (bypassa WAF), backend solo maneja metadata.
+// H8: Foto de perfil — flujo presigned URL (bypasa AWS WAF/ALB)
 router.post('/avatar/prepare', authenticate, userController.prepareAvatarUpload);
 router.post('/avatar/confirm', authenticate, userController.confirmAvatarUpload);
 router.delete('/avatar', authenticate, userController.deleteProfilePhoto);
