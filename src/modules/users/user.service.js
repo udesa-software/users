@@ -29,8 +29,6 @@ function isValidMagicNumber(buffer) {
 }
 
 const path = require('path');
-const Busboy = require('busboy');
-const { PassThrough } = require('stream');
 const { supabase } = require('../../config/supabase');
 const { env } = require('../../config/env');
 
@@ -246,123 +244,60 @@ const userService = {
     }
   },
 
-  // H8 CA.7: procesa la subida en streaming con busboy — los chunks se
-  // validan a medida que llegan y se rechazan antes de ocupar RAM si no pasan.
-  // Solo el archivo válido y dentro del límite se sube a Supabase Storage.
-  async uploadProfilePhoto(userId, req) {
-    return new Promise((resolve, reject) => {
-      let busboy;
-      try {
-        busboy = Busboy({
-          headers: req.headers,
-          limits: { files: 1, fileSize: 5 * 1024 * 1024 }, // CA.2: corta el stream si pasa 5MB
-        });
-      } catch (err) {
-        return reject(new AppError(400, 'Fallo al inicializar parser: ' + err.message));
+  // H8 paso 1: genera una signed URL para que el cliente suba directo a Supabase,
+  // evitando el AWS WAF del ALB que bloquea bodies grandes.
+  async prepareAvatarUpload(userId, mimeType) {
+    const ALLOWED_MIME = ['image/jpeg', 'image/jpg', 'image/png'];
+    if (!ALLOWED_MIME.includes(mimeType)) {
+      throw new AppError(400, 'Formato inválido. Solo JPG y PNG.');
+    }
+    const ext = mimeType === 'image/png' ? '.png' : '.jpg';
+    const filename = `${userId}-${Date.now()}${ext}`;
+
+    const { data, error } = await supabase.storage
+      .from(env.SUPABASE_STORAGE_BUCKET)
+      .createSignedUploadUrl(filename);
+
+    if (error) throw new AppError(500, 'Error al generar URL de subida: ' + error.message);
+    return { signedUrl: data.signedUrl, filename };
+  },
+
+  // H8 paso 2: el cliente ya subió a Supabase; validamos el archivo y actualizamos DB.
+  // CA.2: límite de 5MB sobre el buffer real. CA.3: magic numbers.
+  async confirmAvatarUpload(userId, filename) {
+    if (!filename || !filename.startsWith(`${userId}-`)) {
+      throw new AppError(403, 'Archivo no pertenece al usuario.');
+    }
+
+    const { data: fileBlob, error: dlErr } = await supabase.storage
+      .from(env.SUPABASE_STORAGE_BUCKET)
+      .download(filename);
+
+    if (dlErr) throw new AppError(400, 'No se encontró el archivo. Reintentá la subida.');
+
+    const buffer = Buffer.from(await fileBlob.arrayBuffer());
+
+    if (buffer.length > 5 * 1024 * 1024) {
+      await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).remove([filename]);
+      throw new AppError(400, 'La imagen no debe superar los 5MB.');
+    }
+    if (!isValidMagicNumber(buffer)) {
+      await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).remove([filename]);
+      throw new AppError(400, 'El contenido real del archivo no es JPG ni PNG.');
+    }
+
+    const { data } = supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).getPublicUrl(filename);
+
+    const user = await userRepository.findProfileById(userId);
+    if (user?.profile_photo_url) {
+      const old = path.basename(user.profile_photo_url.split('?')[0]);
+      if (old !== filename) {
+        await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).remove([old]);
       }
+    }
 
-      let fileEventFired = false;
-
-      busboy.on('file', (name, file, info) => {
-        fileEventFired = true;
-
-        // CA.1: validar extensión
-        const ext = path.extname(info.filename).toLowerCase();
-        if (!['.png', '.jpg', '.jpeg'].includes(ext)) {
-          file.resume();
-          return reject(new AppError(400, 'Formato inválido. Solo JPG y PNG.'));
-        }
-
-        const uniqueFilename = `${userId}-${Date.now()}${ext}`;
-        const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
-        let totalBytes = 0;
-        let magicChecked = false;
-        let validationError = null;
-
-        // Create a PassThrough stream to pipe to Supabase
-        const passThrough = new PassThrough();
-        // Evitar unhandled 'error' event si se destruye el stream antes de que Supabase lo consuma
-        passThrough.on('error', () => {});
-
-        // Arrancar el upload a Supabase — los chunks llegan por passThrough en tiempo real.
-        // El borrado de la foto vieja se hace DESPUÉS de que el upload termina exitosamente
-        // para no perderla si la validación falla (tamaño, magic numbers, etc).
-        const uploadPromise = supabase.storage
-          .from(env.SUPABASE_STORAGE_BUCKET)
-          .upload(uniqueFilename, passThrough, { contentType: mimeType, upsert: true, duplex: 'half' });
-
-        uploadPromise.then(async ({ error: uploadErr }) => {
-          if (uploadErr) {
-            return reject(new AppError(500, 'Error al subir: ' + uploadErr.message));
-          }
-
-          const { data } = supabase.storage
-            .from(env.SUPABASE_STORAGE_BUCKET)
-            .getPublicUrl(uniqueFilename);
-
-          // Borrar la foto vieja solo si el upload fue exitoso
-          const user = await userRepository.findProfileById(userId);
-          if (user?.profile_photo_url) {
-            const old = path.basename(user.profile_photo_url.split('?')[0]);
-            await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).remove([old]);
-          }
-
-          await userRepository.updateProfilePhoto(userId, data.publicUrl);
-          resolve(data.publicUrl);
-        }).catch(reject);
-
-
-        file.on('data', (chunk) => {
-          if (validationError) return;
-
-          totalBytes += chunk.length;
-
-          // CA.2: rechazar en tiempo real si supera 5MB
-          if (totalBytes > 5 * 1024 * 1024) {
-            validationError = new AppError(400, 'La imagen no debe superar los 5MB.');
-            passThrough.destroy(validationError);
-            file.resume();
-            return reject(validationError);
-          }
-
-          // CA.3: validar magic numbers en el primer chunk
-          if (!magicChecked) {
-            magicChecked = true;
-            if (!isValidMagicNumber(chunk)) {
-              validationError = new AppError(400, 'El contenido real del archivo no es JPG ni PNG.');
-              passThrough.destroy(validationError);
-              file.resume();
-              return reject(validationError);
-            }
-          }
-
-          // Pass the chunk directly to the PassThrough stream
-          passThrough.write(chunk);
-        });
-
-        file.on('limit', () => {
-          validationError = validationError || new AppError(400, 'La imagen no debe superar los 5MB.');
-          passThrough.destroy(validationError);
-          file.resume();
-          reject(validationError);
-        });
-
-        // 'end' se emite cuando el stream del archivo termina.
-        file.on('end', () => {
-          if (validationError) return;
-          // Signal the end of the PassThrough stream so Supabase knows it's done
-          passThrough.end();
-        });
-      });
-
-      // 'finish' solo maneja el caso en que no llegó ningún archivo
-      busboy.on('finish', () => {
-        if (!fileEventFired) reject(new AppError(400, 'No se subió ningún archivo.'));
-      });
-
-      busboy.on('error', reject);
-      req.pipe(busboy);
-    });
+    await userRepository.updateProfilePhoto(userId, data.publicUrl);
+    return data.publicUrl;
   },
 
   // H8 CA.4/CA.6: elimina la foto de perfil de Supabase Storage y limpia la URL en DB

@@ -926,208 +926,126 @@ describe('internalController.getOnlineStatus', () => {
 // ---------------------------------------------------------------------------
 // H8: Foto de Perfil — Upload & Delete Tests
 // ---------------------------------------------------------------------------
-const EventEmitter = require('events');
 
-class MockBusboy extends EventEmitter {
-  constructor(config) {
-    super();
-    MockBusboy.latestInstance = this;
-    this.limits = config.limits;
-  }
-}
+// Helpers para generar base64 con los magic bytes correctos
+const pngBase64 = () => Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+  Buffer.alloc(100),
+]).toString('base64');
 
-jest.mock('busboy', () => {
-  return jest.fn().mockImplementation((config) => {
-    return new MockBusboy(config);
-  });
-});
+const jpgBase64 = () => Buffer.concat([
+  Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]),
+  Buffer.alloc(100),
+]).toString('base64');
+
+const elfBase64 = () => Buffer.from([0x7F, 0x45, 0x4C, 0x46, 0x00]).toString('base64');
 
 describe('userService.uploadProfilePhoto & deleteProfilePhoto', () => {
-  let fakeReq;
   let supabaseMock;
-  let BusboyMock;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    fakeReq = new EventEmitter();
-    fakeReq.pipe = jest.fn();
-    fakeReq.headers = { 'content-type': 'multipart/form-data; boundary=xxx' };
     supabaseMock = require('../../src/config/supabase').supabase;
-    BusboyMock = require('busboy');
   });
 
-  describe('userService.uploadProfilePhoto', () => {
-    it('falla si el formato no es JPG o PNG (CA.1)', async () => {
-      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
-      const busboy = MockBusboy.latestInstance;
-      const fileStream = new EventEmitter();
-      fileStream.resume = jest.fn();
+  describe('userService.prepareAvatarUpload', () => {
+    it('falla si el mimeType no es JPG o PNG (CA.1)', async () => {
+      await expect(
+        userService.prepareAvatarUpload('user-uuid-1', 'application/x-sh')
+      ).rejects.toThrow('Formato inválido. Solo JPG y PNG.');
+    });
 
-      busboy.emit('file', 'profilePhoto', fileStream, {
-        filename: 'malicious.sh',
-        encoding: '7bit',
-        mimeType: 'application/x-sh',
+    it('devuelve signedUrl y filename para mimeType válido', async () => {
+      const result = await userService.prepareAvatarUpload('user-uuid-1', 'image/png');
+      expect(result.signedUrl).toContain('supabase');
+      expect(result.filename).toMatch(/^user-uuid-1-\d+\.png$/);
+    });
+
+    it('rechaza con 500 si Supabase falla al crear la signed URL', async () => {
+      supabaseMock.storage.from.mockReturnValueOnce({
+        createSignedUploadUrl: jest.fn().mockResolvedValue({ data: null, error: { message: 'Storage unavailable' } }),
       });
-      busboy.emit('finish');
+      await expect(
+        userService.prepareAvatarUpload('user-uuid-1', 'image/jpeg')
+      ).rejects.toMatchObject({ statusCode: 500 });
+    });
+  });
 
-      await expect(promise).rejects.toThrow('Formato inválido. Solo JPG y PNG.');
+  describe('userService.confirmAvatarUpload', () => {
+    const makeBlobMock = (buffer) => ({
+      arrayBuffer: () => Promise.resolve(buffer),
+    });
+
+    it('falla con 403 si el filename no pertenece al usuario (CA.security)', async () => {
+      await expect(
+        userService.confirmAvatarUpload('user-uuid-1', 'otro-usuario-123.png')
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('falla si Supabase no encuentra el archivo subido', async () => {
+      supabaseMock.storage.from.mockReturnValueOnce({
+        download: jest.fn().mockResolvedValue({ data: null, error: { message: 'Not found' } }),
+      });
+      await expect(
+        userService.confirmAvatarUpload('user-uuid-1', 'user-uuid-1-123.png')
+      ).rejects.toThrow('No se encontró el archivo');
     });
 
     it('falla si la imagen supera los 5MB (CA.2)', async () => {
-      userRepository.findProfileById.mockResolvedValue({ id: 'user-uuid-1', profile_photo_url: null });
-      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
-      const busboy = MockBusboy.latestInstance;
-      const fileStream = new EventEmitter();
-      fileStream.resume = jest.fn();
-
-      busboy.emit('file', 'profilePhoto', fileStream, {
-        filename: 'large.png',
-        encoding: '7bit',
-        mimeType: 'image/png',
-      });
-
-      // Primer chunk con magic numbers válidos pero luego supera 5MB
-      fileStream.emit('data', Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
-      fileStream.emit('data', Buffer.alloc(6 * 1024 * 1024));
-      fileStream.emit('end');
-      busboy.emit('finish');
-
-      await expect(promise).rejects.toThrow('La imagen no debe superar los 5MB.');
-    });
-
-    it('falla si los magic numbers del archivo no coinciden con PNG o JPG (CA.3)', async () => {
-      userRepository.findProfileById.mockResolvedValue({ id: 'user-uuid-1', profile_photo_url: null });
-      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
-      const busboy = MockBusboy.latestInstance;
-      const fileStream = new EventEmitter();
-      fileStream.resume = jest.fn();
-
-      busboy.emit('file', 'profilePhoto', fileStream, {
-        filename: 'fake.png',
-        encoding: '7bit',
-        mimeType: 'image/png',
-      });
-
-      // Magic numbers de un ejecutable ELF — deben rechazarse
-      fileStream.emit('data', Buffer.from([0x7F, 0x45, 0x4C, 0x46]));
-      fileStream.emit('end');
-      busboy.emit('finish');
-
-      await expect(promise).rejects.toThrow('El contenido real del archivo no es JPG ni PNG.');
-    });
-
-    it('sube exitosamente a Supabase y actualiza la DB si pasa todas las validaciones (CA.1-CA.4)', async () => {
-      userRepository.findProfileById.mockResolvedValue({ id: 'user-uuid-1', profile_photo_url: null });
-      userRepository.updateProfilePhoto.mockResolvedValue();
-
-      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
-      const busboy = MockBusboy.latestInstance;
-      const fileStream = new EventEmitter();
-      fileStream.resume = jest.fn();
-
-      busboy.emit('file', 'profilePhoto', fileStream, {
-        filename: 'perfil.png',
-        encoding: '7bit',
-        mimeType: 'image/png',
-      });
-
-      // Magic numbers PNG válidos
-      fileStream.emit('data', Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
-      fileStream.emit('end');
-      busboy.emit('finish');
-
-      const url = await promise;
-      expect(url).toContain('supabase');
-      expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', url);
-    });
-
-    it('sube exitosamente una imagen JPG válida (magic numbers JPG, línea 26)', async () => {
-      userRepository.findProfileById.mockResolvedValue({ id: 'user-uuid-1', profile_photo_url: null });
-      userRepository.updateProfilePhoto.mockResolvedValue();
-
-      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
-      const busboy = MockBusboy.latestInstance;
-      const fileStream = new EventEmitter();
-      fileStream.resume = jest.fn();
-
-      busboy.emit('file', 'profilePhoto', fileStream, {
-        filename: 'perfil.jpg',
-        encoding: '7bit',
-        mimeType: 'image/jpeg',
-      });
-
-      fileStream.emit('data', Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]));
-      fileStream.emit('end');
-      busboy.emit('finish');
-
-      const url = await promise;
-      expect(url).toContain('supabase');
-      expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', url);
-    });
-
-    it('rechaza con 400 si busboy no puede inicializarse (cabecera Content-Type inválida)', async () => {
-      BusboyMock.mockImplementationOnce(() => { throw new Error('Content-Type inválido'); });
-
-      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
-
-      await expect(promise).rejects.toMatchObject({ statusCode: 400 });
-    });
-
-    it('rechaza con 500 si Supabase devuelve error durante el upload', async () => {
+      const bigBuffer = Buffer.concat([
+        Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+        Buffer.alloc(6 * 1024 * 1024),
+      ]);
       supabaseMock.storage.from.mockReturnValueOnce({
-        upload: jest.fn().mockResolvedValue({ error: { message: 'Storage quota exceeded' } }),
+        download: jest.fn().mockResolvedValue({ data: makeBlobMock(bigBuffer), error: null }),
         remove: jest.fn().mockResolvedValue({ error: null }),
-        getPublicUrl: jest.fn(() => ({ data: { publicUrl: 'https://test.supabase.co/test.jpg' } })),
       });
-
-      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
-      const busboy = MockBusboy.latestInstance;
-      const fileStream = new EventEmitter();
-      fileStream.resume = jest.fn();
-
-      busboy.emit('file', 'profilePhoto', fileStream, { filename: 'foto.png', encoding: '7bit', mimeType: 'image/png' });
-      fileStream.emit('data', Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
-      fileStream.emit('end');
-      busboy.emit('finish');
-
-      await expect(promise).rejects.toMatchObject({ statusCode: 500 });
+      await expect(
+        userService.confirmAvatarUpload('user-uuid-1', 'user-uuid-1-123.png')
+      ).rejects.toThrow('La imagen no debe superar los 5MB.');
     });
 
-    it('elimina la foto anterior cuando el usuario ya tenía una (CA.5 — borra la vieja)', async () => {
+    it('falla si los magic numbers no coinciden con PNG o JPG (CA.3)', async () => {
+      const elfBuffer = Buffer.from([0x7F, 0x45, 0x4C, 0x46, 0x00]);
+      supabaseMock.storage.from.mockReturnValueOnce({
+        download: jest.fn().mockResolvedValue({ data: makeBlobMock(elfBuffer), error: null }),
+        remove: jest.fn().mockResolvedValue({ error: null }),
+      });
+      await expect(
+        userService.confirmAvatarUpload('user-uuid-1', 'user-uuid-1-123.png')
+      ).rejects.toThrow('El contenido real del archivo no es JPG ni PNG.');
+    });
+
+    it('confirma exitosamente una imagen PNG y actualiza la DB (CA.1-CA.4)', async () => {
+      const pngBuffer = Buffer.concat([Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), Buffer.alloc(100)]);
+      supabaseMock.storage.from
+        .mockReturnValueOnce({ download: jest.fn().mockResolvedValue({ data: makeBlobMock(pngBuffer), error: null }) })
+        .mockReturnValueOnce({ getPublicUrl: jest.fn(() => ({ data: { publicUrl: 'https://test.supabase.co/storage/profile-photos/test.jpg' } })) });
+      userRepository.findProfileById.mockResolvedValue({ id: 'user-uuid-1', profile_photo_url: null });
+      userRepository.updateProfilePhoto.mockResolvedValue();
+
+      const url = await userService.confirmAvatarUpload('user-uuid-1', 'user-uuid-1-123.png');
+
+      expect(url).toContain('supabase');
+      expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', url);
+    });
+
+    it('elimina la foto anterior cuando el usuario ya tenía una (CA.5)', async () => {
+      const pngBuffer = Buffer.concat([Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), Buffer.alloc(100)]);
+      supabaseMock.storage.from
+        .mockReturnValueOnce({ download: jest.fn().mockResolvedValue({ data: makeBlobMock(pngBuffer), error: null }) })
+        .mockReturnValueOnce({ getPublicUrl: jest.fn(() => ({ data: { publicUrl: 'https://test.supabase.co/storage/profile-photos/test.jpg' } })) })
+        .mockReturnValueOnce({ remove: jest.fn().mockResolvedValue({ error: null }) });
       userRepository.findProfileById.mockResolvedValue({
         id: 'user-uuid-1',
         profile_photo_url: 'https://test.supabase.co/storage/v1/object/public/profile-photos/old-photo.png?v=1',
       });
       userRepository.updateProfilePhoto.mockResolvedValue();
 
-      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
-      const busboy = MockBusboy.latestInstance;
-      const fileStream = new EventEmitter();
-      fileStream.resume = jest.fn();
+      await userService.confirmAvatarUpload('user-uuid-1', 'user-uuid-1-123.png');
 
-      busboy.emit('file', 'profilePhoto', fileStream, { filename: 'nueva.png', encoding: '7bit', mimeType: 'image/png' });
-      fileStream.emit('data', Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
-      fileStream.emit('end');
-      busboy.emit('finish');
-
-      await promise;
-      // upload + getPublicUrl + remove (foto vieja) = 3 llamadas a from()
       expect(supabaseMock.storage.from).toHaveBeenCalledTimes(3);
       expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', expect.any(String));
-    });
-
-    it('rechaza con 400 cuando busboy dispara el evento limit por tamaño excedido', async () => {
-      const promise = userService.uploadProfilePhoto('user-uuid-1', fakeReq);
-      const busboy = MockBusboy.latestInstance;
-      const fileStream = new EventEmitter();
-      fileStream.resume = jest.fn();
-
-      busboy.emit('file', 'profilePhoto', fileStream, { filename: 'grande.png', encoding: '7bit', mimeType: 'image/png' });
-      fileStream.emit('data', Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
-      fileStream.emit('limit');
-      busboy.emit('finish');
-
-      await expect(promise).rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('5MB') });
     });
   });
 

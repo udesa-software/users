@@ -78,7 +78,7 @@ describe('authService.login', () => {
     userRepository.resetFailedAttempts.mockResolvedValue();
     userRepository.incrementFailedAttempts.mockResolvedValue();
     userRepository.createRefreshToken.mockResolvedValue();
-    userRepository.findProfileById.mockResolvedValue({ role: 'user', biography: 'My bio' });
+    userRepository.findProfileById.mockResolvedValue({ role: 'user', biography: 'My bio', profile_photo_url: 'https://cdn.test/photo.jpg' });
     userRepository.updateLastLogin.mockResolvedValue();
   });
 
@@ -87,7 +87,7 @@ describe('authService.login', () => {
 
     expect(result.accessToken).toBe('access-token-mock');
     expect(result.refreshToken).toBe('refresh-uuid-mock');
-    expect(result.user).toMatchObject({ id: 'user-uuid-1', username: 'testuser', role: 'user', biography: 'My bio' });
+    expect(result.user).toMatchObject({ id: 'user-uuid-1', username: 'testuser', role: 'user', biography: 'My bio', profile_photo_url: 'https://cdn.test/photo.jpg' });
   });
 
   it('guarda el refresh token opaco en la BD', async () => {
