@@ -71,6 +71,8 @@ jest.mock('../../src/config/supabase', () => ({
         upload: jest.fn().mockResolvedValue({ error: null }),
         remove: jest.fn().mockResolvedValue({ error: null }),
         getPublicUrl: jest.fn(() => ({ data: { publicUrl: 'https://test.supabase.co/storage/profile-photos/test.jpg' } })),
+        createSignedUploadUrl: jest.fn().mockResolvedValue({ data: { signedUrl: 'https://signed.supabase.co/upload/test.jpg' }, error: null }),
+        download: jest.fn().mockResolvedValue({ data: null, error: null }),
       })),
     },
   },
@@ -1284,5 +1286,182 @@ describe('userService.getPublicProfile', () => {
       is_online: false,
       last_seen_at: recentTime,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H8 presigned URL: userService.prepareAvatarUpload
+// ---------------------------------------------------------------------------
+describe('userService.prepareAvatarUpload', () => {
+  let supabaseMock;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    supabaseMock = require('../../src/config/supabase').supabase;
+  });
+
+  it('lanza 400 si el mimeType no es image/jpeg, image/jpg ni image/png', async () => {
+    await expect(userService.prepareAvatarUpload('user-uuid-1', 'image/gif'))
+      .rejects.toMatchObject({ statusCode: 400, message: 'Formato inválido. Solo JPG y PNG.' });
+    expect(supabaseMock.storage.from).not.toHaveBeenCalled();
+  });
+
+  it('devuelve signedUrl y filename para mimeType image/png', async () => {
+    supabaseMock.storage.from.mockReturnValueOnce({
+      createSignedUploadUrl: jest.fn().mockResolvedValue({
+        data: { signedUrl: 'https://signed.supabase.co/upload/user-uuid-1-123.png' },
+        error: null,
+      }),
+    });
+    const result = await userService.prepareAvatarUpload('user-uuid-1', 'image/png');
+    expect(result.signedUrl).toBe('https://signed.supabase.co/upload/user-uuid-1-123.png');
+    expect(result.filename).toMatch(/^user-uuid-1-\d+\.png$/);
+  });
+
+  it('devuelve filename con extensión .jpg para mimeType image/jpeg', async () => {
+    supabaseMock.storage.from.mockReturnValueOnce({
+      createSignedUploadUrl: jest.fn().mockResolvedValue({
+        data: { signedUrl: 'https://signed.supabase.co/upload/user-uuid-1-123.jpg' },
+        error: null,
+      }),
+    });
+    const result = await userService.prepareAvatarUpload('user-uuid-1', 'image/jpeg');
+    expect(result.filename).toMatch(/\.jpg$/);
+  });
+
+  it('devuelve filename con extensión .jpg para mimeType image/jpg', async () => {
+    supabaseMock.storage.from.mockReturnValueOnce({
+      createSignedUploadUrl: jest.fn().mockResolvedValue({
+        data: { signedUrl: 'https://signed.supabase.co/upload/user-uuid-1-123.jpg' },
+        error: null,
+      }),
+    });
+    const result = await userService.prepareAvatarUpload('user-uuid-1', 'image/jpg');
+    expect(result.filename).toMatch(/\.jpg$/);
+  });
+
+  it('lanza 500 si Supabase devuelve error al crear la URL firmada', async () => {
+    supabaseMock.storage.from.mockReturnValueOnce({
+      createSignedUploadUrl: jest.fn().mockResolvedValue({
+        data: null,
+        error: { message: 'Storage bucket not found' },
+      }),
+    });
+    await expect(userService.prepareAvatarUpload('user-uuid-1', 'image/png'))
+      .rejects.toMatchObject({ statusCode: 500 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H8 presigned URL: userService.confirmAvatarUpload
+// ---------------------------------------------------------------------------
+describe('userService.confirmAvatarUpload', () => {
+  let supabaseMock;
+  const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+  const VALID_FILENAME = 'user-uuid-1-1234567890.png';
+  const PUBLIC_URL = 'https://test.supabase.co/storage/profile-photos/user-uuid-1-1234567890.png';
+
+  const makeBlobMock = (bufferData) => ({
+    arrayBuffer: jest.fn().mockResolvedValue(bufferData),
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    supabaseMock = require('../../src/config/supabase').supabase;
+    userRepository.findProfileById.mockResolvedValue(null);
+    userRepository.updateProfilePhoto.mockResolvedValue();
+  });
+
+  it('lanza 403 si el filename no comienza con el userId', async () => {
+    await expect(userService.confirmAvatarUpload('user-uuid-1', 'otro-user-123.png'))
+      .rejects.toMatchObject({ statusCode: 403, message: 'Archivo no pertenece al usuario.' });
+    expect(supabaseMock.storage.from).not.toHaveBeenCalled();
+  });
+
+  it('lanza 403 si el filename está vacío', async () => {
+    await expect(userService.confirmAvatarUpload('user-uuid-1', ''))
+      .rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it('lanza 400 si Supabase no encuentra el archivo (download error)', async () => {
+    supabaseMock.storage.from.mockReturnValueOnce({
+      download: jest.fn().mockResolvedValue({ data: null, error: { message: 'Not found' } }),
+    });
+    await expect(userService.confirmAvatarUpload('user-uuid-1', VALID_FILENAME))
+      .rejects.toMatchObject({ statusCode: 400, message: 'No se encontró el archivo. Reintentá la subida.' });
+  });
+
+  it('lanza 400 y elimina el archivo si supera los 5MB', async () => {
+    const hugeBuffer = Buffer.alloc(6 * 1024 * 1024);
+    const removeMock = jest.fn().mockResolvedValue({ error: null });
+    supabaseMock.storage.from
+      .mockReturnValueOnce({ download: jest.fn().mockResolvedValue({ data: makeBlobMock(hugeBuffer), error: null }) })
+      .mockReturnValueOnce({ remove: removeMock });
+
+    await expect(userService.confirmAvatarUpload('user-uuid-1', VALID_FILENAME))
+      .rejects.toMatchObject({ statusCode: 400, message: 'La imagen no debe superar los 5MB.' });
+    expect(removeMock).toHaveBeenCalledWith([VALID_FILENAME]);
+  });
+
+  it('lanza 400 y elimina el archivo si los magic numbers son inválidos', async () => {
+    const invalidMagic = Buffer.from([0x7F, 0x45, 0x4C, 0x46]); // ELF
+    const removeMock = jest.fn().mockResolvedValue({ error: null });
+    supabaseMock.storage.from
+      .mockReturnValueOnce({ download: jest.fn().mockResolvedValue({ data: makeBlobMock(invalidMagic), error: null }) })
+      .mockReturnValueOnce({ remove: removeMock });
+
+    await expect(userService.confirmAvatarUpload('user-uuid-1', VALID_FILENAME))
+      .rejects.toMatchObject({ statusCode: 400, message: 'El contenido real del archivo no es JPG ni PNG.' });
+    expect(removeMock).toHaveBeenCalledWith([VALID_FILENAME]);
+  });
+
+  it('confirma exitosamente un PNG válido y devuelve la URL pública', async () => {
+    supabaseMock.storage.from
+      .mockReturnValueOnce({ download: jest.fn().mockResolvedValue({ data: makeBlobMock(PNG_MAGIC), error: null }) })
+      .mockReturnValueOnce({ getPublicUrl: jest.fn(() => ({ data: { publicUrl: PUBLIC_URL } })) });
+
+    const result = await userService.confirmAvatarUpload('user-uuid-1', VALID_FILENAME);
+
+    expect(result).toBe(PUBLIC_URL);
+    expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', PUBLIC_URL);
+  });
+
+  it('confirma exitosamente un JPG válido (magic numbers JPEG)', async () => {
+    const jpgMagic = Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]);
+    const jpgFilename = 'user-uuid-1-1234567890.jpg';
+    supabaseMock.storage.from
+      .mockReturnValueOnce({ download: jest.fn().mockResolvedValue({ data: makeBlobMock(jpgMagic), error: null }) })
+      .mockReturnValueOnce({ getPublicUrl: jest.fn(() => ({ data: { publicUrl: PUBLIC_URL } })) });
+
+    const result = await userService.confirmAvatarUpload('user-uuid-1', jpgFilename);
+    expect(result).toBe(PUBLIC_URL);
+    expect(userRepository.updateProfilePhoto).toHaveBeenCalledWith('user-uuid-1', PUBLIC_URL);
+  });
+
+  it('elimina la foto anterior si el usuario ya tenía una foto diferente', async () => {
+    const oldFilename = 'user-uuid-1-9999.png';
+    const oldUrl = `https://test.supabase.co/storage/profile-photos/${oldFilename}`;
+    userRepository.findProfileById.mockResolvedValue({ profile_photo_url: oldUrl });
+    const removeMock = jest.fn().mockResolvedValue({ error: null });
+    supabaseMock.storage.from
+      .mockReturnValueOnce({ download: jest.fn().mockResolvedValue({ data: makeBlobMock(PNG_MAGIC), error: null }) })
+      .mockReturnValueOnce({ getPublicUrl: jest.fn(() => ({ data: { publicUrl: PUBLIC_URL } })) })
+      .mockReturnValueOnce({ remove: removeMock });
+
+    await userService.confirmAvatarUpload('user-uuid-1', VALID_FILENAME);
+
+    expect(removeMock).toHaveBeenCalledWith([oldFilename]);
+  });
+
+  it('no elimina la foto si el filename es el mismo que el anterior (mismo archivo)', async () => {
+    const sameUrl = `https://test.supabase.co/storage/profile-photos/${VALID_FILENAME}?v=1`;
+    userRepository.findProfileById.mockResolvedValue({ profile_photo_url: sameUrl });
+    supabaseMock.storage.from
+      .mockReturnValueOnce({ download: jest.fn().mockResolvedValue({ data: makeBlobMock(PNG_MAGIC), error: null }) })
+      .mockReturnValueOnce({ getPublicUrl: jest.fn(() => ({ data: { publicUrl: PUBLIC_URL } })) });
+
+    await userService.confirmAvatarUpload('user-uuid-1', VALID_FILENAME);
+
+    expect(supabaseMock.storage.from).toHaveBeenCalledTimes(2);
   });
 });
