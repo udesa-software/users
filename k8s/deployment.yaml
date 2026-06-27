@@ -102,6 +102,21 @@ spec:
                 secretKeyRef:
                   name: users-secret
                   key: SUPABASE_STORAGE_BUCKET
+            - name: LOKI_URL
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: LOKI_URL
+            - name: LOKI_USER
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: LOKI_USER
+            - name: LOKI_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: users-secret
+                  key: LOKI_TOKEN
           livenessProbe:
             httpGet:
               path: /health

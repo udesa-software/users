@@ -15,3 +15,4 @@ data:
   SMTP_FROM: "noreply@udesa.edu.ar"
   FRIENDS_SERVICE_URL: "http://friends:3000"
   NOTIFICATIONS_SERVICE_URL: "http://notifications:8080"
+  SERVICE_NAME: "users"
