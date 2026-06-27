@@ -1193,6 +1193,7 @@ describe('userService.getPublicProfile', () => {
       id: 'uuid-1',
       username: 'mateo',
       biography: 'Hola udesa',
+      profile_photo_url: null,
       is_online: true,
       last_seen_at: recentTime,
     });
@@ -1249,6 +1250,7 @@ describe('userService.getPublicProfile', () => {
       id: 'uuid-1',
       username: 'mateo',
       biography: 'Hola udesa',
+      profile_photo_url: null,
       is_online: true,
       last_seen_at: recentTime,
     });
@@ -1278,6 +1280,7 @@ describe('userService.getPublicProfile', () => {
       id: 'uuid-1',
       username: 'mateo',
       biography: 'Hola udesa',
+      profile_photo_url: null,
       is_online: false,
       last_seen_at: recentTime,
     });

@@ -366,6 +366,49 @@ const userService = {
   },
 
   // H8 CA.4/CA.6: elimina la foto de perfil de Supabase Storage y limpia la URL en DB
+  async prepareAvatarUpload(userId, mimeType) {
+    const ALLOWED_MIME = ['image/jpeg', 'image/jpg', 'image/png'];
+    if (!ALLOWED_MIME.includes(mimeType)) {
+      throw new AppError(400, 'Formato inválido. Solo JPG y PNG.');
+    }
+    const ext = mimeType === 'image/png' ? '.png' : '.jpg';
+    const filename = `${userId}-${Date.now()}${ext}`;
+    const { data, error } = await supabase.storage
+      .from(env.SUPABASE_STORAGE_BUCKET)
+      .createSignedUploadUrl(filename);
+    if (error) throw new AppError(500, 'Error al generar URL de subida: ' + error.message);
+    return { signedUrl: data.signedUrl, filename };
+  },
+
+  async confirmAvatarUpload(userId, filename) {
+    if (!filename || !filename.startsWith(`${userId}-`)) {
+      throw new AppError(403, 'Archivo no pertenece al usuario.');
+    }
+    const { data: fileBlob, error: dlErr } = await supabase.storage
+      .from(env.SUPABASE_STORAGE_BUCKET)
+      .download(filename);
+    if (dlErr) throw new AppError(400, 'No se encontró el archivo. Reintentá la subida.');
+
+    const buffer = Buffer.from(await fileBlob.arrayBuffer());
+    if (buffer.length > 5 * 1024 * 1024) {
+      await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).remove([filename]);
+      throw new AppError(400, 'La imagen no debe superar los 5MB.');
+    }
+    if (!isValidMagicNumber(buffer)) {
+      await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).remove([filename]);
+      throw new AppError(400, 'El contenido real del archivo no es JPG ni PNG.');
+    }
+
+    const { data } = supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).getPublicUrl(filename);
+    const user = await userRepository.findProfileById(userId);
+    if (user?.profile_photo_url) {
+      const old = path.basename(user.profile_photo_url.split('?')[0]);
+      if (old !== filename) await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET).remove([old]);
+    }
+    await userRepository.updateProfilePhoto(userId, data.publicUrl);
+    return data.publicUrl;
+  },
+
   async deleteProfilePhoto(userId) {
     const user = await userRepository.findProfileById(userId);
     if (!user) {
@@ -392,6 +435,7 @@ const userService = {
       id: result.id,
       username: result.username,
       biography: result.biography || '',
+      profile_photo_url: result.profile_photo_url ?? null,
       is_online: isOnline,
       last_seen_at: result.last_seen_at,
     };
