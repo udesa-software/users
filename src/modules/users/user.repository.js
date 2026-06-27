@@ -300,6 +300,19 @@ const userRepository = {
     };
   },
 
+  // H8: devuelve todos los usuarios sin límite para exportación CSV
+  async exportUsers({ search = '' }) {
+    const pattern = `%${search}%`;
+    const result = await query(
+      `SELECT id, username, email, is_verified, is_suspended, under_review, deleted_at, created_at
+       FROM users
+       WHERE (username ILIKE $1 OR email ILIKE $1)
+       ORDER BY created_at DESC`,
+      [pattern]
+    );
+    return result.rows;
+  },
+
   // H4 CA.1: detalle completo de un usuario para el panel de admin
   async getUserDetail(userId) {
     const result = await query(

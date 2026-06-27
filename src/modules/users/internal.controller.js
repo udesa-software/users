@@ -7,6 +7,17 @@ const { notificationsClient } = require('../../clients/notificationsClient');
 const REVOKED_TTL_SEC = 15 * 60;
 
 const internalController = {
+  // H8: exportar lista completa sin límite para CSV (solo llamado por backoffice vía red interna)
+  async exportUsers(req, res, next) {
+    try {
+      const { search = '' } = req.query;
+      const users = await userRepository.exportUsers({ search });
+      res.json({ users });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   // H4: listado de usuarios con búsqueda parcial y paginación
   async listUsers(req, res, next) {
     try {
