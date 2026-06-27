@@ -949,3 +949,101 @@ describe('Change password invalidates existing sessions', () => {
     expect(refreshRes.status).toBe(401);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// GET /internal/users/export  (H8)
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('GET /internal/users/export', () => {
+  it('200 — devuelve array vacío cuando no hay usuarios', async () => {
+    const res = await request(app).get('/internal/users/export');
+    expect(res.status).toBe(200);
+    expect(res.body.users).toEqual([]);
+  });
+
+  it('200 — devuelve todos los usuarios sin filtro', async () => {
+    await insertVerifiedUser({ username: 'alice', email: 'alice@udesa.edu.ar' });
+    await insertVerifiedUser({ username: 'bob',   email: 'bob@udesa.edu.ar' });
+
+    const res = await request(app).get('/internal/users/export');
+    expect(res.status).toBe(200);
+    expect(res.body.users).toHaveLength(2);
+  });
+
+  it('200 — incluye los campos requeridos para el CSV', async () => {
+    await insertVerifiedUser({ username: 'charlie', email: 'charlie@udesa.edu.ar' });
+
+    const res = await request(app).get('/internal/users/export');
+    const user = res.body.users[0];
+    expect(user).toHaveProperty('id');
+    expect(user).toHaveProperty('username');
+    expect(user).toHaveProperty('email');
+    expect(user).toHaveProperty('is_verified');
+    expect(user).toHaveProperty('is_suspended');
+    expect(user).toHaveProperty('under_review');
+    expect(user).toHaveProperty('deleted_at');
+    expect(user).toHaveProperty('created_at');
+  });
+
+  it('200 — filtra por username con ?search=', async () => {
+    await insertVerifiedUser({ username: 'diana', email: 'diana@udesa.edu.ar' });
+    await insertVerifiedUser({ username: 'edgar', email: 'edgar@udesa.edu.ar' });
+
+    const res = await request(app).get('/internal/users/export?search=diana');
+    expect(res.status).toBe(200);
+    expect(res.body.users).toHaveLength(1);
+    expect(res.body.users[0].username).toBe('diana');
+  });
+
+  it('200 — filtra por email con ?search=', async () => {
+    await insertVerifiedUser({ username: 'fiona', email: 'fiona@udesa.edu.ar' });
+    await insertVerifiedUser({ username: 'george', email: 'george@gmail.com' });
+
+    const res = await request(app).get('/internal/users/export?search=udesa');
+    expect(res.status).toBe(200);
+    expect(res.body.users).toHaveLength(1);
+    expect(res.body.users[0].username).toBe('fiona');
+  });
+
+  it('200 — búsqueda es case-insensitive', async () => {
+    await insertVerifiedUser({ username: 'hector', email: 'hector@udesa.edu.ar' });
+
+    const res = await request(app).get('/internal/users/export?search=HECTOR');
+    expect(res.status).toBe(200);
+    expect(res.body.users).toHaveLength(1);
+  });
+
+  it('200 — incluye usuarios suspendidos', async () => {
+    await insertVerifiedUser({ username: 'ivan', email: 'ivan@udesa.edu.ar', isSuspended: true });
+
+    const res = await request(app).get('/internal/users/export');
+    expect(res.status).toBe(200);
+    expect(res.body.users[0].is_suspended).toBe(true);
+  });
+
+  it('200 — incluye usuarios con soft-delete', async () => {
+    await insertVerifiedUser({ username: 'julia', email: 'julia@udesa.edu.ar', deletedAt: new Date() });
+
+    const res = await request(app).get('/internal/users/export');
+    expect(res.status).toBe(200);
+    expect(res.body.users[0].deleted_at).not.toBeNull();
+  });
+
+  it('200 — devuelve array vacío si el search no coincide con nadie', async () => {
+    await insertVerifiedUser({ username: 'kevin', email: 'kevin@udesa.edu.ar' });
+
+    const res = await request(app).get('/internal/users/export?search=zzznomatch');
+    expect(res.status).toBe(200);
+    expect(res.body.users).toEqual([]);
+  });
+
+  it('200 — devuelve usuarios ordenados por created_at DESC', async () => {
+    const first  = await insertVerifiedUser({ username: 'lena', email: 'lena@udesa.edu.ar' });
+    const second = await insertVerifiedUser({ username: 'mike', email: 'mike@udesa.edu.ar' });
+
+    const res = await request(app).get('/internal/users/export');
+    expect(res.status).toBe(200);
+    const usernames = res.body.users.map(u => u.username);
+    expect(usernames.indexOf(second.username)).toBeLessThan(usernames.indexOf(first.username));
+  });
+});
