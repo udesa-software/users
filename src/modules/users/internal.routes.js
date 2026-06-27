@@ -6,6 +6,8 @@ const router = Router();
 
 router.post('/users/profiles', internalController.getBatchProfiles);
 router.get('/users', internalController.listUsers);
+// H8: antes de /:id para que Express no interprete "export" como un userId
+router.get('/users/export', internalController.exportUsers);
 router.get('/users/:id', internalController.getUser);
 router.patch('/users/:id/privacy', internalController.updatePrivacy);
 router.get('/users/:id/preferences', internalController.getPreferences);

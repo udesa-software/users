@@ -10,6 +10,7 @@ jest.mock('../../src/modules/users/user.repository', () => ({
     clearUnderReview: jest.fn(),
     deleteAllRefreshTokensForUser: jest.fn(),
     getUnderReviewResolvedAt: jest.fn(),
+    exportUsers: jest.fn(),
   },
 }));
 
@@ -135,6 +136,46 @@ describe('internalController.getReviewStatus', () => {
 
     await internalController.getReviewStatus(makeReq(), makeRes(), next);
 
+    expect(next).toHaveBeenCalledWith(expect.any(Error));
+  });
+});
+
+// H8: exportar lista completa para CSV
+describe('internalController.exportUsers', () => {
+  const mockUsers = [
+    { id: 'uuid-1', username: 'alice', email: 'alice@test.com', is_verified: true, is_suspended: false, under_review: false, deleted_at: null, created_at: '2026-01-01T00:00:00Z' },
+    { id: 'uuid-2', username: 'bob',   email: 'bob@test.com',   is_verified: false, is_suspended: true,  under_review: false, deleted_at: null, created_at: '2026-02-01T00:00:00Z' },
+  ];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    userRepository.exportUsers.mockResolvedValue(mockUsers);
+  });
+
+  it('llama a userRepository.exportUsers con el search recibido', async () => {
+    const req = { query: { search: 'alice' } };
+    await internalController.exportUsers(req, makeRes(), makeNext());
+    expect(userRepository.exportUsers).toHaveBeenCalledWith({ search: 'alice' });
+  });
+
+  it('usa string vacío si no se pasa search', async () => {
+    const req = { query: {} };
+    await internalController.exportUsers(req, makeRes(), makeNext());
+    expect(userRepository.exportUsers).toHaveBeenCalledWith({ search: '' });
+  });
+
+  it('devuelve el array de usuarios en { users }', async () => {
+    const req = { query: {} };
+    const res = makeRes();
+    await internalController.exportUsers(req, res, makeNext());
+    expect(res.json).toHaveBeenCalledWith({ users: mockUsers });
+  });
+
+  it('llama a next con el error si el repositorio rechaza', async () => {
+    userRepository.exportUsers.mockRejectedValue(new Error('DB error'));
+    const req = { query: {} };
+    const next = makeNext();
+    await internalController.exportUsers(req, makeRes(), next);
     expect(next).toHaveBeenCalledWith(expect.any(Error));
   });
 });
